@@ -15,12 +15,14 @@ import hmac
 import json
 import logging
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -234,19 +236,27 @@ def _read_anchor_head() -> tuple[int, str] | None:
     path = get_settings().audit_anchor_path
     if not path or not Path(path).exists():
         return None
+    # Take the highest seq, not the last line written: anchoring happens after
+    # the commit and outside the append lock, so two concurrent appends can
+    # write their anchor lines in either order. Trusting file order would let a
+    # lower seq land last and silently weaken the head-truncation check.
+    best: tuple[int, str] | None = None
     try:
-        last = None
         with open(path, "r", encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
-                if line:
-                    last = line
-        if not last:
-            return None
-        seq_str, h = last.split("\t")
-        return int(seq_str), h
-    except (OSError, ValueError):
+                if not line:
+                    continue
+                try:
+                    seq_str, h = line.split("\t")
+                    seq = int(seq_str)
+                except ValueError:
+                    continue  # skip a torn/partial line rather than failing open
+                if best is None or seq > best[0]:
+                    best = (seq, h)
+    except OSError:
         return None
+    return best
 
 
 def _emit_siem(rec: AuditRecord) -> None:
@@ -266,6 +276,95 @@ def _emit_siem(rec: AuditRecord) -> None:
     from ..webhooks import post_json
 
     post_json(url, event, timeout=2.0)
+
+
+# --------------------------------------------------------------------------- #
+# Append serialization
+#
+# A hash chain is *inherently serial*: every append must read the current head
+# and commit to its hash, so seq N+1 cannot be built until N exists. The old
+# optimistic scheme (read head -> insert -> absorb UNIQUE violation -> retry)
+# does not merely waste work under concurrency, it LOSES RECORDS: with 12
+# threads x 20 appends, 8 governed decisions failed permanently after exhausting
+# the retries — and verify_chain still reported `valid=True`, because a chain
+# cannot detect rows that were never written. That is precisely the gap an audit
+# ledger exists to make impossible.
+#
+# The fix is to make the read-head/insert pair genuinely atomic. Note that an
+# atomically-allocated sequence number would NOT be sufficient here: holding seq
+# N+1 is useless until row N has committed its hash, so the serialization point
+# is unavoidable — it just has to be correct rather than probabilistic.
+# --------------------------------------------------------------------------- #
+
+# Arbitrary but stable 64-bit key identifying "the AgentOps ledger" to Postgres.
+# Fits in a signed bigint, which is what pg_advisory_xact_lock takes.
+_ADVISORY_LOCK_KEY = 0x4147_4E54_4F50_5301
+
+# Serializes appends within this process. On Postgres the advisory lock is what
+# makes appends safe *across* workers; this one keeps a 40-thread ASGI pool from
+# stampeding the database to discover that, and is the sole guard on SQLite.
+_process_append_lock = threading.Lock()
+
+# Backends that serialize across processes. Anything else gets the process lock
+# only, and is warned about once at startup rather than failing silently.
+_CROSS_PROCESS_DIALECTS = frozenset({"postgresql", "sqlite"})
+_warned_dialects: set[str] = set()
+
+
+@contextmanager
+def _append_lock(db: Session) -> Iterator[None]:
+    """Serialize the read-head/insert critical section across all writers.
+
+    Postgres takes a **transaction-scoped** advisory lock, which the database
+    releases automatically on COMMIT *or* ROLLBACK — so a worker that dies
+    mid-append cannot wedge the ledger for the rest of the fleet.
+
+    SQLite needs only the process lock: it is single-writer by construction and
+    is the development/single-node backend.
+
+    Other backends fall back to the process lock, which does **not** serialize
+    across workers. MySQL is deliberately not special-cased here: its
+    ``GET_LOCK`` is connection-scoped, and SQLAlchemy returns the connection to
+    the pool on commit, so the matching ``RELEASE_LOCK`` could execute on a
+    different connection and strand the lock. Shipping that untested is worse
+    than declining to claim support, so the limitation is surfaced instead.
+    """
+    with _process_append_lock:
+        dialect = db.get_bind().dialect.name
+        if dialect == "postgresql":
+            # This also begins the transaction the INSERT runs in, which is what
+            # makes one lock cover the whole critical section.
+            db.execute(text("SELECT pg_advisory_xact_lock(:key)"),
+                       {"key": _ADVISORY_LOCK_KEY})
+        elif dialect not in _CROSS_PROCESS_DIALECTS and dialect not in _warned_dialects:
+            _warned_dialects.add(dialect)
+            _audit_log.warning(json.dumps({
+                "event": "LEDGER_APPEND_LOCK_DEGRADED",
+                "dialect": dialect,
+                "detail": ("no cross-process append serialization for this backend; "
+                           "run a single worker or use PostgreSQL"),
+            }))
+        yield
+
+
+def _emit_append_failure(entry: dict[str, Any], error: BaseException) -> None:
+    """Record an append that could not be persisted, out-of-band.
+
+    Some call sites append *after* the governed action already hit the upstream
+    system, so a lost append means a real side effect with no ledger row — and
+    the chain cannot flag its own absence. Emitting to the audit log stream at
+    ERROR keeps the gap visible to the SIEM even when the database refused it.
+    """
+    _audit_log.error(json.dumps({
+        "event": "LEDGER_APPEND_FAILED",
+        "error": f"{type(error).__name__}: {error}",
+        "agent": entry.get("agent_name"),
+        "role": entry.get("role_name"),
+        "action_type": entry.get("action_type"),
+        "resource": entry.get("resource"),
+        "decision": entry.get("decision"),
+        "reason": entry.get("reason"),
+    }, default=str))
 
 
 class AuditLedger:
@@ -296,56 +395,61 @@ class AuditLedger:
         risk_score: int = 0,
         risk_factors: list | None = None,
     ) -> AuditRecord:
-        # The chain head is (read seq -> write seq+1); two concurrent appends can
-        # compute the same seq. The UNIQUE(seq) constraint turns that race into an
-        # IntegrityError, which we absorb by recomputing the head and retrying.
+        fields = dict(
+            org_id=org_id, agent_id=agent_id, agent_name=agent_name,
+            role_name=role_name, action_type=action_type, resource=resource,
+            decision=decision, reason=reason, payload_hash=payload_hash,
+            payload_preview=payload_preview, dlp_findings=dlp_findings or [],
+            dlp_count=len(dlp_findings or []), billable=billable,
+            matched_policy_id=matched_policy_id,
+            # Risk is recorded but excluded from the hash pre-image.
+            risk_score=risk_score, risk_factors=risk_factors or [],
+        )
+
+        # Reading the head and inserting the row that links to it must be one
+        # atomic step (see _append_lock). The retry loop is kept as a backstop
+        # for the fallback path and for transient DB errors; with the lock held
+        # the UNIQUE(seq) violation should no longer be reachable.
+        rec: AuditRecord | None = None
         for attempt in range(_APPEND_MAX_RETRIES):
-            head = self._head()
-            seq = 0 if head is None else head.seq + 1
-            prev_hash = GENESIS_HASH if head is None else head.hash
-
-            rec = AuditRecord(
-                seq=seq,
-                org_id=org_id,
-                agent_id=agent_id,
-                agent_name=agent_name,
-                role_name=role_name,
-                action_type=action_type,
-                resource=resource,
-                decision=decision,
-                reason=reason,
-                payload_hash=payload_hash,
-                payload_preview=payload_preview,
-                dlp_findings=dlp_findings or [],
-                dlp_count=len(dlp_findings or []),
-                billable=billable,
-                matched_policy_id=matched_policy_id,
-                # Risk is recorded but excluded from the hash pre-image.
-                risk_score=risk_score,
-                risk_factors=risk_factors or [],
-                prev_hash=prev_hash,
-                created_at=datetime.now(timezone.utc),
-            )
-            rec.hash = record_hash(prev_hash, _hashable_view(rec))
-            self.db.add(rec)
             try:
-                self.db.commit()
-            except IntegrityError:
+                with _append_lock(self.db):
+                    head = self._head()
+                    prev_hash = GENESIS_HASH if head is None else head.hash
+                    rec = AuditRecord(
+                        seq=0 if head is None else head.seq + 1,
+                        prev_hash=prev_hash,
+                        created_at=datetime.now(timezone.utc),
+                        **fields,
+                    )
+                    rec.hash = record_hash(prev_hash, _hashable_view(rec))
+                    self.db.add(rec)
+                    self.db.commit()
+                break
+            except IntegrityError as exc:
                 self.db.rollback()
+                rec = None
                 if attempt == _APPEND_MAX_RETRIES - 1:
+                    # The action may already have taken effect upstream, and a
+                    # missing row is invisible to verify_chain — so make the gap
+                    # loud rather than letting it vanish with the exception.
+                    _emit_append_failure(fields, exc)
                     raise
-                continue
-            self.db.refresh(rec)
 
-            # Anchor the new head out-of-band + stream to SIEM (both best-effort),
-            # and advance the verified-prefix cache to the new head.
-            _anchor_head(rec)
-            _emit_siem(rec)
-            _cache_extend(rec)
-            return rec
+        if rec is None:  # pragma: no cover - loop either breaks or raises
+            raise RuntimeError("ledger append exhausted retries without resolving")
 
-        # Unreachable: the final retry either returns or re-raises above.
-        raise RuntimeError("ledger append exhausted retries without resolving")
+        self.db.refresh(rec)
+
+        # Anchor the new head out-of-band + stream to SIEM (both best-effort),
+        # and advance the verified-prefix cache to the new head. Deliberately
+        # OUTSIDE the append lock: these do network and filesystem I/O, and
+        # holding a global serialization point across a webhook POST would make
+        # every append in the fleet wait on one HTTP round-trip.
+        _anchor_head(rec)
+        _emit_siem(rec)
+        _cache_extend(rec)
+        return rec
 
     def count(self) -> int:
         return self.db.scalar(select(func.count(AuditRecord.id))) or 0
