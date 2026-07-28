@@ -15,6 +15,7 @@ dependencies = [
     "httpx>=0.27",
     "cryptography>=42",
     "alembic>=1.13",
+    "sqlglot>=25.0",
 ]
 
 [project.optional-dependencies]

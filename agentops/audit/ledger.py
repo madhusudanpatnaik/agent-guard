@@ -368,11 +368,23 @@ def verify_chain(db: Session) -> ChainStatus:
     return status
 
 
-def _verify_chain_full(db: Session) -> ChainStatus:
-    records = list(db.scalars(select(AuditRecord).order_by(AuditRecord.seq.asc())))
-    anchor = _read_anchor_head()
+_VERIFY_BATCH = 1000
 
-    if not records:
+
+def _verify_chain_full(db: Session) -> ChainStatus:
+    """Walk the entire chain in bounded memory.
+
+    The ledger is the one table that grows without limit, so materializing it
+    (``list(db.scalars(...))``) would make an integrity check cost O(table) RAM —
+    at tens of millions of rows that is an OOM kill triggered by an API call.
+    Rows are streamed in batches instead, so memory stays O(batch) no matter how
+    long the chain is. The head/length are read up front with two cheap indexed
+    queries so failure reports still carry them.
+    """
+    anchor = _read_anchor_head()
+    head = db.scalar(select(AuditRecord).order_by(AuditRecord.seq.desc()).limit(1))
+
+    if head is None:
         if anchor is not None:
             return ChainStatus(
                 valid=False, length=0, head_hash=GENESIS_HASH, broken_at_seq=0,
@@ -380,44 +392,38 @@ def _verify_chain_full(db: Session) -> ChainStatus:
             )
         return ChainStatus(valid=True, length=0, head_hash=GENESIS_HASH, detail="empty ledger")
 
+    total = db.scalar(select(func.count(AuditRecord.id))) or 0
+    head_hash = head.hash
+
+    def _broken(seq: int, detail: str) -> ChainStatus:
+        return ChainStatus(valid=False, length=total, head_hash=head_hash,
+                           broken_at_seq=seq, detail=detail)
+
     prev_hash = GENESIS_HASH
     expected_seq = 0
-    for rec in records:
+    # yield_per streams server-side in batches instead of buffering the result.
+    stream = db.scalars(
+        select(AuditRecord).order_by(AuditRecord.seq.asc()).execution_options(
+            yield_per=_VERIFY_BATCH)
+    )
+    for rec in stream:
         if rec.seq != expected_seq:
-            return ChainStatus(
-                valid=False,
-                length=len(records),
-                head_hash=records[-1].hash,
-                broken_at_seq=rec.seq,
-                detail=f"sequence gap: expected {expected_seq}, found {rec.seq}",
-            )
+            return _broken(rec.seq, f"sequence gap: expected {expected_seq}, found {rec.seq}")
         if rec.prev_hash != prev_hash:
-            return ChainStatus(
-                valid=False,
-                length=len(records),
-                head_hash=records[-1].hash,
-                broken_at_seq=rec.seq,
-                detail=f"prev_hash mismatch at seq {rec.seq}",
-            )
-        recomputed = record_hash(prev_hash, _hashable_view(rec))
-        if recomputed != rec.hash:
-            return ChainStatus(
-                valid=False,
-                length=len(records),
-                head_hash=records[-1].hash,
-                broken_at_seq=rec.seq,
-                detail=f"hash mismatch at seq {rec.seq} (row was tampered with)",
-            )
+            return _broken(rec.seq, f"prev_hash mismatch at seq {rec.seq}")
+        if record_hash(prev_hash, _hashable_view(rec)) != rec.hash:
+            return _broken(rec.seq, f"hash mismatch at seq {rec.seq} (row was tampered with)")
         prev_hash = rec.hash
         expected_seq += 1
-
-    head = records[-1]
+        # Detach the verified row so the identity map doesn't accumulate the
+        # whole table across batches (which would defeat the streaming).
+        db.expunge(rec)
     # Head-truncation check: the anchor must not be ahead of the DB head.
     if anchor is not None and anchor[0] > head.seq:
         return ChainStatus(
             valid=False,
-            length=len(records),
-            head_hash=head.hash,
+            length=total,
+            head_hash=head_hash,
             broken_at_seq=head.seq + 1,
             detail=(
                 f"ledger truncated: anchor expects head seq {anchor[0]} "
@@ -427,7 +433,7 @@ def _verify_chain_full(db: Session) -> ChainStatus:
 
     return ChainStatus(
         valid=True,
-        length=len(records),
-        head_hash=head.hash,
+        length=total,
+        head_hash=head_hash,
         detail="chain intact",
     )

@@ -8,6 +8,7 @@ pydantic-settings>=2.3
 httpx>=0.27
 cryptography>=42  # credential vault (encrypts connector secrets at rest)
 alembic>=1.13     # database schema migrations
+sqlglot>=25.0     # AST-based SQL governance (replaces text classification)
 
 # Optional: PostgreSQL driver (used by docker-compose; SQLite needs nothing extra)
 psycopg[binary]>=3.1

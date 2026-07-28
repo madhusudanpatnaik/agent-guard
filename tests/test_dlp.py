@@ -1,5 +1,7 @@
 """Unit tests for the data-exfiltration scanner."""
 
+import base64 as _b64
+
 from agentops.dlp.scanner import CRITICAL, scan_payload
 
 
@@ -64,3 +66,51 @@ def test_many_small_matches_scan_in_linear_time():
     elapsed = time.perf_counter() - start
     assert elapsed < 1.5, f"DLP scan took {elapsed:.2f}s — possible O(n*m) redaction"
     assert any(f.detector == "email_address" for f in result.findings)
+
+
+# --- obfuscation bypass resistance ------------------------------------------
+
+_AWS = "AKIAIOSFODNN7EXAMPLE"
+
+
+def _detectors(payload):
+    return {f.detector for f in scan_payload(payload).findings}
+
+
+def test_base64_encoded_secret_is_caught():
+    blob = _b64.b64encode(_AWS.encode()).decode()
+    assert "aws_access_key_id" in _detectors({"m": blob})
+    assert scan_payload({"m": blob}).blocking is True
+
+
+def test_hex_encoded_secret_is_caught():
+    assert "aws_access_key_id" in _detectors({"m": _AWS.encode().hex()})
+
+
+def test_spaced_out_secret_is_caught():
+    assert "aws_access_key_id" in _detectors({"m": " ".join(_AWS)})
+
+
+def test_zero_width_split_secret_is_caught():
+    assert "aws_access_key_id" in _detectors({"m": "AKIA​IOSFODNN7EXAMPLE"})
+
+
+def test_obfuscated_secret_is_not_echoed_in_the_redacted_payload():
+    blob = _b64.b64encode(_AWS.encode()).decode()
+    out = str(scan_payload({"m": blob}).redacted)
+    assert blob not in out and _AWS not in out
+
+
+def test_benign_text_is_not_flagged_by_deobfuscation():
+    for benign in ("the quarterly report is attached for review",
+                   "please summarize these meeting notes",
+                   "deployment finished successfully in us-east-1"):
+        assert scan_payload({"m": benign}).blocking is False
+
+
+def test_deobfuscation_is_bounded_on_large_input():
+    import time
+    payload = {"m": _b64.b64encode(b"x" * 40000).decode()}
+    start = time.perf_counter()
+    scan_payload(payload)
+    assert time.perf_counter() - start < 2.0  # no decode-bomb amplification

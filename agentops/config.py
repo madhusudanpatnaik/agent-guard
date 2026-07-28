@@ -153,6 +153,10 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
     db_pool_timeout: int = 30
     db_pool_recycle: int = 1800  # recycle connections every 30m (stale-conn guard)
+    # Pool for *connector* databases (the upstreams agents query through the
+    # plane). Engines are cached per DSN, so these bound each upstream's pool.
+    connector_pool_size: int = 5
+    connector_max_overflow: int = 10
 
     # --- Server ---------------------------------------------------------
     host: str = "0.0.0.0"

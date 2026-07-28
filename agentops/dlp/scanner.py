@@ -18,6 +18,8 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from .deobfuscate import normalized_variants
+
 # --------------------------------------------------------------------------- #
 # Severities
 # --------------------------------------------------------------------------- #
@@ -175,8 +177,11 @@ _HIGH_ENTROPY_THRESHOLD = 4.0
 class DLPScanner:
     """Stateless scanner. Instantiate once and reuse; it holds no mutable state."""
 
-    def __init__(self, detectors: list[_Detector] | None = None):
+    def __init__(self, detectors: list[_Detector] | None = None, *,
+                 deobfuscate: bool = True):
         self.detectors = detectors if detectors is not None else _DETECTORS
+        # Also scan base64/hex/spaced/zero-width readings of each string.
+        self.deobfuscate = deobfuscate
 
     # -- public API -------------------------------------------------------
     def scan(self, payload: Any) -> "DLPResult":
@@ -260,6 +265,30 @@ class DLPScanner:
                     path=path,
                 )
             redacted = "[REDACTED:high_entropy_token]"
+
+        # Obfuscation pass: a secret that is base64/hex-encoded, spaced out, or
+        # zero-width-split reads as innocuous text to the literal patterns above.
+        # Re-run the detectors over bounded normalized readings of the string and
+        # record any hit. The *findings* come from the variants; the returned
+        # `redacted` text is never replaced by a decoded form, so normalization
+        # can only ever add detection — it cannot corrupt the payload.
+        if self.deobfuscate:
+            for variant in normalized_variants(text):
+                for det in self.detectors:
+                    for match in det.pattern.finditer(variant):
+                        raw = match.group(0)
+                        if det.validator and not det.validator(raw):
+                            continue
+                        key = (det.name, path)
+                        if key not in findings:
+                            findings[key] = DLPFinding(
+                                detector=det.name, severity=det.severity, count=1,
+                                sample=_redact(raw), path=path,
+                            )
+                        # The literal text hid a real secret — don't emit it.
+                        if "[REDACTED" not in redacted:
+                            redacted = f"[REDACTED:obfuscated_{det.name}]"
+                        break
         return redacted
 
 
