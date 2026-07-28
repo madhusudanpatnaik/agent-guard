@@ -93,22 +93,32 @@ def assess(db: Session, agent: Agent, req: ActionRequest, decision: PolicyDecisi
             score += bump
             factors.append(f"amount:{amount:g}")
 
-    # Behavioral baseline signals (index-backed ledger queries).
+    # Behavioral baseline signals. All of these come from ONE bounded window
+    # fetch (see anomaly.profile) rather than five separate round-trips — the
+    # hot path pays a single query for the whole behavioral picture.
     if agent.id is not None:
-        if not anomaly.has_seen_resource(db, agent.id, req.resource):
+        prof = anomaly.profile(db, agent.id, req.resource, req.action_type)
+        # Novelty is scored per resource *family*, not per literal string: an
+        # agent already reading `db:customers:*` isn't doing something new when
+        # it reads the next customer id. A genuinely new family still scores.
+        if not prof.family_seen:
             score += 15
             factors.append("novel_resource")
-        if not anomaly.has_seen_action(db, agent.id, req.action_type):
+        if not prof.action_seen:
             score += 8
             factors.append("novel_action")
-        ratio = anomaly.recent_denial_ratio(db, agent.id)
-        if ratio >= 0.5:
+        if prof.denial_ratio >= 0.5:
             score += 12
-            factors.append(f"denial_ratio:{ratio:.0%}")
-        z = anomaly.volume_zscore(db, agent.id)
-        if z >= 3.0:
+            factors.append(f"denial_ratio:{prof.denial_ratio:.0%}")
+        if prof.volume_z >= 3.0:
             score += 12
-            factors.append(f"volume_surge:z={z:.1f}")
+            factors.append(f"volume_surge:z={prof.volume_z:.1f}")
+        # A long run of the identical (action, resource) is the classic
+        # stuck-in-a-tool-call-loop failure mode — distinct from a volume spike.
+        loop_threshold = get_settings().risk_loop_repeat_threshold
+        if loop_threshold and prof.loop_repeats >= loop_threshold:
+            score += 12
+            factors.append(f"repeat_loop:{prof.loop_repeats}x")
 
     if anomaly.is_off_hours(now):
         score += 8

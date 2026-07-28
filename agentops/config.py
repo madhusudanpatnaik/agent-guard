@@ -131,6 +131,29 @@ class Settings(BaseSettings):
     # At/above this score, a high_risk alert is raised. 0 disables risk alerts.
     risk_alert_threshold: int = 0
 
+    # --- Risk hot-path budget (latency vs. detection fidelity) ----------
+    # Behavioral signals are derived from ONE bounded window fetch. This caps how
+    # many recent rows that fetch may pull, bounding per-request work regardless
+    # of how busy an agent is.
+    risk_profile_max_rows: int = 500
+    # When the window says a resource/action is new, additionally run an exact
+    # unbounded-history lookup (up to 2 extra queries) before calling it novel.
+    # True  = fewer false "novel" flags on long-lived agents (higher fidelity).
+    # False = strictly bounded query count (lowest latency).
+    risk_exact_novelty: bool = True
+    # Repeats of the same (action, resource) back-to-back that indicate an agent
+    # stuck in a tool-calling loop. 0 disables the signal.
+    risk_loop_repeat_threshold: int = 10
+
+    # --- Database connection pool --------------------------------------
+    # Sized against the ASGI threadpool: sync endpoints each hold a connection
+    # for the request, so a pool smaller than the worker count causes queueing
+    # that looks like latency. 0 = SQLAlchemy default.
+    db_pool_size: int = 20
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800  # recycle connections every 30m (stale-conn guard)
+
     # --- Server ---------------------------------------------------------
     host: str = "0.0.0.0"
     port: int = 8080

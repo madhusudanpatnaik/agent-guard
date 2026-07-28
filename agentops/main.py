@@ -24,6 +24,7 @@ from .routers import (
     approvals,
     audit,
     auth,
+    compliance,
     connectors,
     dashboard,
     detectors,
@@ -124,7 +125,7 @@ def create_app() -> FastAPI:
 
     # --- Routers ---
     for module in (auth, orgs, roles, agents, connectors, gateway, approvals, audit,
-                   dashboard, simulator, alerts, scim, detectors):
+                   dashboard, simulator, alerts, scim, detectors, compliance):
         app.include_router(module.router, prefix="/api")
 
     @app.get("/health", tags=["meta"])

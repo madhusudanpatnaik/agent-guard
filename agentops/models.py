@@ -195,6 +195,10 @@ class AuditRecord(Base):
         UniqueConstraint("seq", name="uq_audit_seq"),
         # Backs the rolling per-agent quota / rate-limit COUNT(*) queries.
         Index("ix_audit_agent_created", "agent_id", "created_at"),
+        # Policy analytics (analysis / recommendations / impact preview) filter by
+        # (role_name, org_id); without this the ledger is table-scanned and the
+        # cost grows with total history rather than with the role's own traffic.
+        Index("ix_audit_role_org", "role_name", "org_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dlp.safe_regex import bounded_search, validate_pattern
+from ..gateway_service import invalidate_detector_cache
 from ..models import Detector, User
 from ..schemas import DetectorIn, DetectorOut, DetectorTestRequest, DetectorTestResult
 from ..security import require_admin
@@ -58,6 +59,7 @@ def create_detector(
     db.add(det)
     db.commit()
     db.refresh(det)
+    invalidate_detector_cache(user.org_id)  # new rule active immediately
     return det
 
 
@@ -91,6 +93,7 @@ def update_detector(
     det.enabled = body.enabled
     db.commit()
     db.refresh(det)
+    invalidate_detector_cache(user.org_id)
     return det
 
 
@@ -101,3 +104,4 @@ def delete_detector(
     det = owned_or_404(db.get(Detector, detector_id), user, "Detector")
     db.delete(det)
     db.commit()
+    invalidate_detector_cache(user.org_id)

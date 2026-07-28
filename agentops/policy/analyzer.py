@@ -21,14 +21,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-import re
-
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..dlp.scanner import DLPFinding, DLPResult
 from ..models import AuditRecord, Decision, Effect, Policy, Role
+from ..utils import resource_family
 from .engine import ActionRequest, PolicyEngine, glob_match
 
 
@@ -175,17 +174,9 @@ def analyze_role(db: Session, role: Role) -> PolicyAnalysis:
 # Policy recommendations — turn recurring default-deny gaps into candidate rules
 # --------------------------------------------------------------------------- #
 
-# A trailing id-like segment after ':' or '/' (all digits, or a UUID-ish token).
-_ID_SEGMENT = re.compile(r"(?<=[:/])(\d+|[0-9a-fA-F]{8,})$")
-
-
 def _generalize(resource: str) -> str:
-    """Replace a trailing id-like segment with ``*`` so per-id denials collapse.
-
-    ``db:customers:1042`` -> ``db:customers:*`` ; ``http:crm/orders/98`` ->
-    ``http:crm/orders/*``. Leaves already-glob or non-id resources untouched.
-    """
-    return _ID_SEGMENT.sub("*", resource)
+    """Collapse a per-id resource to its family (shared with novelty scoring)."""
+    return resource_family(resource)
 
 
 @dataclass

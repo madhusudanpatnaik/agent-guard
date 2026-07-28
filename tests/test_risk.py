@@ -235,3 +235,46 @@ def test_risk_alert_raised_above_threshold(client, admin_headers, monkeypatch):
                       "payload": {"note": "hi"}})
     alerts = client.get("/api/alerts", headers=admin_headers).json()
     assert any(a["kind"] == "high_risk" for a in alerts)
+
+
+# --- family-aware novelty (alert-fatigue reduction) --------------------------
+
+def test_walking_ids_in_a_known_family_is_not_repeatedly_novel(db):
+    """An agent reading customer 1..N must not score 'novel' every single time."""
+    a = _agent(db)
+    led = AuditLedger(db)
+    # The agent has already read one customer record.
+    led.append(agent_id=a.id, agent_name="a", role_name="r", action_type="db.read",
+               resource="db:customers:1001", decision=Decision.ALLOW, reason="",
+               billable=True)
+    from datetime import datetime, timezone
+    noon = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    d = PolicyDecision(Decision.ALLOW, "ok", dlp=scan_payload(None))
+
+    # A DIFFERENT id in the same family is the same kind of access -> not novel.
+    r = risk.assess(db, a, ActionRequest("db.read", "db:customers:9999"), d, now=noon)
+    assert "novel_resource" not in r.factors
+
+    # A genuinely different family still scores as novel.
+    r2 = risk.assess(db, a, ActionRequest("db.read", "db:salaries:1"), d, now=noon)
+    assert "novel_resource" in r2.factors
+
+
+def test_resource_family_generalization():
+    from agentops.utils import resource_family
+    assert resource_family("db:customers:1042") == "db:customers:*"
+    assert resource_family("http:crm/orders/98") == "http:crm/orders/*"
+    assert resource_family("db:customers:*") == "db:customers:*"   # already a family
+    assert resource_family("payment:stripe:refund") == "payment:stripe:refund"  # not an id
+
+
+def test_loop_detection_flags_stuck_agent(db):
+    """A run of the identical action+resource is a tool-call loop, not a spike."""
+    a = _agent(db)
+    led = AuditLedger(db)
+    for _ in range(12):
+        led.append(agent_id=a.id, agent_name="a", role_name="r", action_type="http.get",
+                   resource="http:api/status", decision=Decision.ALLOW, reason="",
+                   billable=True)
+    prof = anomaly.profile(db, a.id, "http:api/status", "http.get")
+    assert prof.loop_repeats >= 10
