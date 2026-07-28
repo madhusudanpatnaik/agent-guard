@@ -31,6 +31,9 @@ LOW = "low"
 
 _SEVERITY_RANK = {LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3}
 
+# Most findings stored on a single audit record. See DLPResult.findings_as_dicts.
+_MAX_LEDGER_FINDINGS = 50
+
 
 @dataclass
 class DLPFinding:
@@ -313,7 +316,30 @@ class DLPResult:
         return any(_SEVERITY_RANK[f.severity] >= _SEVERITY_RANK[HIGH] for f in self.findings)
 
     def findings_as_dicts(self) -> list[dict[str, Any]]:
-        return [f.as_dict() for f in self.findings]
+        """Serialize findings for the ledger, bounded in size.
+
+        One finding is emitted per (detector, path), so a payload that fans the
+        same secret across many fields produces one finding per field. Measured:
+        a 145KB request yielded 3,000 findings serializing to 350KB — a 2.4x
+        amplification written into an **append-only** table that cannot be pruned
+        without breaking the hash chain, and which every future verify_chain must
+        re-serialize. Cheap to trigger, permanent to store.
+
+        Findings are pre-sorted by descending severity, so truncation keeps the
+        most serious ones and records the remainder as an explicit ``_omitted``
+        entry rather than dropping it silently. Every consumer of ``dlp_count``
+        tests it as ``> 0`` rather than reading its magnitude, so capping cannot
+        skew reputation, compliance evidence, or the dashboard.
+        """
+        if len(self.findings) <= _MAX_LEDGER_FINDINGS:
+            return [f.as_dict() for f in self.findings]
+        kept = [f.as_dict() for f in self.findings[:_MAX_LEDGER_FINDINGS]]
+        omitted = len(self.findings) - _MAX_LEDGER_FINDINGS
+        kept.append(DLPFinding(
+            detector="_omitted", severity=LOW, count=omitted,
+            sample=f"{omitted} further finding(s) not stored", path="$",
+        ).as_dict())
+        return kept
 
 
 # Shared default instance + convenience function.
