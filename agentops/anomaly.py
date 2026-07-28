@@ -130,14 +130,27 @@ def volume_zscore(db: Session, agent_id: int, *, window_seconds: int = 300,
 # Consolidated hot-path profile — ONE query feeds every behavioral signal
 # --------------------------------------------------------------------------- #
 
+# A perfectly flat baseline has zero variance, so a plain z-score is undefined
+# (division by zero). Treating *any* increase as a surge is wrong: an agent that
+# steadily does 1 action per window would score a full surge on its second one.
+# A flat baseline is only a surge if the jump is both proportionally large and
+# absolutely meaningful.
+_FLAT_SURGE_MULTIPLE = 3.0   # >= 3x the flat baseline …
+_FLAT_SURGE_ABSOLUTE = 5     # … and at least this many actions above it
+_FLAT_SURGE_SCORE = 3.0
+
+
 def _zscore_from_buckets(buckets: list[int]) -> float:
     current, history = buckets[0], buckets[1:]
     if len([h for h in history if h > 0]) < 3:
-        return 0.0
+        return 0.0  # not enough baseline to say anything (incl. idle/batch agents)
     mean = sum(history) / len(history)
     stdev = (sum((h - mean) ** 2 for h in history) / len(history)) ** 0.5
     if stdev == 0:
-        return 0.0 if current <= mean else 3.0
+        if (current >= mean * _FLAT_SURGE_MULTIPLE
+                and current - mean >= _FLAT_SURGE_ABSOLUTE):
+            return _FLAT_SURGE_SCORE
+        return 0.0
     return (current - mean) / stdev
 
 

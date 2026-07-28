@@ -165,3 +165,24 @@ def test_chain_status_empty_ledger(db):
     status = chain_status(db)
     assert status.valid is True
     assert status.length == 0
+
+
+def test_verification_streams_and_does_not_materialize_the_table(db):
+    """Chain verification must be O(batch) memory, not O(table).
+
+    Guards the OOM vector: loading every AuditRecord into a list means an
+    integrity check on a large ledger kills the process.
+    """
+    ledger = AuditLedger(db)
+    for i in range(120):
+        _append(ledger, i)
+    db.expunge_all()
+
+    status = verify_chain(db)
+    assert status.valid is True
+    assert status.length == 120
+    # The verifier expunges each row after checking it, so the session's
+    # identity map must NOT be holding the whole chain afterwards.
+    assert len(db.identity_map) < 50, (
+        f"{len(db.identity_map)} rows retained — verification is materializing "
+        "the table instead of streaming it")

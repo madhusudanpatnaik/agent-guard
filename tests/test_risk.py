@@ -278,3 +278,19 @@ def test_loop_detection_flags_stuck_agent(db):
                    billable=True)
     prof = anomaly.profile(db, a.id, "http:api/status", "http.get")
     assert prof.loop_repeats >= 10
+
+
+def test_flat_baseline_small_uptick_is_not_a_surge():
+    """A steady low-volume agent must not trip a surge on a mild increase."""
+    from agentops.anomaly import _zscore_from_buckets as z
+    assert z([2] + [1] * 12) == 0.0     # 1 -> 2 actions is not an anomaly
+    assert z([3] + [1] * 12) == 0.0
+    # A genuine multiple-and-magnitude jump is still caught.
+    assert z([20] + [1] * 12) >= 3.0
+    assert z([50] + [10] * 12) >= 3.0
+
+
+def test_idle_or_batch_agent_has_no_surge_signal():
+    """An agent with no recent baseline (e.g. a daily batch) isn't flagged."""
+    from agentops.anomaly import _zscore_from_buckets as z
+    assert z([40] + [0] * 12) == 0.0

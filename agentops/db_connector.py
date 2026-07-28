@@ -24,13 +24,18 @@ their own design — so the surface here stays provably read-only.
 
 from __future__ import annotations
 
+import hashlib
+import threading
 from dataclasses import dataclass, field
 
 from sqlalchemy import create_engine, select, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from . import sql_guard
 from .audit.ledger import AuditLedger
+from .config import get_settings
 from .dlp.scanner import scan_payload
 from .gateway_service import _claim_approval, _restore_approval, authorize_action
 from .models import Agent, Approval, AuditRecord, Connector, Decision
@@ -59,64 +64,102 @@ class QueryResult:
     error: str | None = None
 
 
-def _classify(sql: str) -> tuple[str, str | None]:
-    """Return ``(verb, error)``. ``error`` is non-None if the SQL is not allowed."""
-    stripped = sql.strip().rstrip(";").strip()
-    if not stripped:
-        return "", "empty query"
-    # Reject multiple statements (an internal ';' followed by more SQL).
-    if len([s for s in stripped.split(";") if s.strip()]) > 1:
-        return "", "multiple statements are not allowed; submit one query at a time"
-    verb = stripped.split(None, 1)[0].upper()
-    if verb not in _READ_VERBS:
-        return verb, (
-            f"'{verb}' is not permitted — this connector is read-only "
-            f"(allowed: {', '.join(sorted(_READ_VERBS))})"
-        )
-    return verb, None
+def _classify(sql: str, dialect: str | None = None) -> tuple[str, str | None]:
+    """Return ``(verb, error)`` for a READ, decided on the parsed AST.
+
+    Delegates to :mod:`agentops.sql_guard`, which reasons over SQLGlot nodes
+    instead of text — so comment-splitting, nesting, and data-modifying CTEs
+    (all of which defeated the previous string classifier) are caught
+    structurally.
+    """
+    analysis = sql_guard.analyze(sql, dialect=dialect, read_only=True)
+    return (analysis.verb or ""), analysis.error
 
 
-def _classify_write(sql: str) -> tuple[str, str | None]:
-    """Return ``(verb, error)`` for a write. ``error`` is set if not permitted."""
-    stripped = sql.strip().rstrip(";").strip()
-    if not stripped:
-        return "", "empty statement"
-    if len([s for s in stripped.split(";") if s.strip()]) > 1:
-        return "", "multiple statements are not allowed; submit one statement at a time"
-    verb = stripped.split(None, 1)[0].upper()
-    if verb not in _WRITE_VERBS:
-        return verb, (
-            f"'{verb}' is not a permitted write — only "
-            f"{', '.join(sorted(_WRITE_VERBS))} are allowed (DDL and reads are refused)"
-        )
-    return verb, None
+def _classify_write(sql: str, dialect: str | None = None) -> tuple[str, str | None]:
+    """Return ``(verb, error)`` for a WRITE, decided on the parsed AST."""
+    analysis = sql_guard.analyze(sql, dialect=dialect, read_only=False)
+    return (analysis.verb or ""), analysis.error
+
+
+# --------------------------------------------------------------------------- #
+# Engine cache
+#
+# Building a SQLAlchemy engine and disposing it per query means a full TCP (and
+# TLS) connect + teardown on EVERY governed statement — hundreds of milliseconds
+# against a remote Postgres, and a steady supply of TIME_WAIT sockets under load.
+# Engines are therefore cached and reused; the cache key includes a digest of the
+# DSN so rotating a connector's vaulted secret transparently yields a NEW engine
+# rather than silently reusing a connection opened with the old credentials.
+# --------------------------------------------------------------------------- #
+
+_engine_cache: dict[str, Engine] = {}
+_engine_lock = threading.Lock()
+
+
+def _engine_for(dsn: str) -> Engine:
+    key = hashlib.sha256(dsn.encode()).hexdigest()
+    with _engine_lock:
+        engine = _engine_cache.get(key)
+        if engine is not None:
+            return engine
+
+    settings = get_settings()
+    kwargs: dict = {}
+    if not dsn.startswith("sqlite"):
+        kwargs = {
+            "pool_size": settings.connector_pool_size,
+            "max_overflow": settings.connector_max_overflow,
+            "pool_timeout": settings.db_pool_timeout,
+            "pool_recycle": settings.db_pool_recycle,
+        }
+    engine = create_engine(dsn, pool_pre_ping=True, **kwargs)
+
+    with _engine_lock:
+        # Another thread may have built one concurrently; keep a single instance
+        # and dispose the loser so we never leak a pool.
+        existing = _engine_cache.get(key)
+        if existing is not None:
+            engine.dispose()
+            return existing
+        _engine_cache[key] = engine
+        return engine
+
+
+def reset_engine_cache() -> None:
+    """Dispose and drop all cached connector engines (tests / shutdown)."""
+    with _engine_lock:
+        for engine in _engine_cache.values():
+            engine.dispose()
+        _engine_cache.clear()
 
 
 def _run_query(dsn: str, sql: str, params: dict) -> tuple[list[str], list[dict]]:
-    engine = create_engine(dsn, pool_pre_ping=True)
-    try:
-        with engine.connect() as conn:
-            # Defense in depth beyond the keyword allowlist: force a read-only
-            # transaction so a statement that leads with SELECT/WITH but hides a
-            # write (Postgres `SELECT ... INTO`, data-modifying CTEs) is rejected
-            # by the database itself. Reads are always rolled back, never committed.
-            trans = conn.begin()
-            try:
-                dialect = engine.dialect.name
-                if dialect == "postgresql":
-                    conn.execute(text("SET TRANSACTION READ ONLY"))
-                elif dialect == "sqlite":
-                    conn.execute(text("PRAGMA query_only = ON"))
-                elif dialect == "mysql":
-                    conn.execute(text("SET TRANSACTION READ ONLY"))
-                result = conn.execute(text(sql), params or {})
-                columns = list(result.keys())
-                rows = [dict(zip(columns, row)) for row in result.fetchmany(_MAX_ROWS)]
-            finally:
-                trans.rollback()
-        return columns, rows
-    finally:
-        engine.dispose()
+    engine = _engine_for(dsn)  # pooled + reused; never disposed per query
+    with engine.connect() as conn:
+        # Defense in depth beyond the keyword allowlist: force a read-only
+        # transaction so a statement that leads with SELECT/WITH but hides a
+        # write (Postgres `SELECT ... INTO`, data-modifying CTEs) is rejected
+        # by the database itself. Reads are always rolled back, never committed.
+        trans = conn.begin()
+        try:
+            dialect = engine.dialect.name
+            if dialect == "postgresql":
+                conn.execute(text("SET TRANSACTION READ ONLY"))
+            elif dialect == "sqlite":
+                conn.execute(text("PRAGMA query_only = ON"))
+            elif dialect == "mysql":
+                conn.execute(text("SET TRANSACTION READ ONLY"))
+            result = conn.execute(text(sql), params or {})
+            columns = list(result.keys())
+            rows = [dict(zip(columns, row)) for row in result.fetchmany(_MAX_ROWS)]
+        finally:
+            trans.rollback()
+            # A pooled SQLite connection keeps PRAGMA state across checkouts;
+            # clear it so a later governed WRITE on the same pool isn't blocked.
+            if engine.dialect.name == "sqlite":
+                conn.exec_driver_sql("PRAGMA query_only = OFF")
+    return columns, rows
 
 
 def _run_write(dsn: str, sql: str, params: dict, max_rows: int) -> tuple[int, bool]:
@@ -125,19 +168,16 @@ def _run_write(dsn: str, sql: str, params: dict, max_rows: int) -> tuple[int, bo
     If the statement would affect more than ``max_rows``, the transaction is
     **rolled back** and ``capped`` is True — nothing is persisted.
     """
-    engine = create_engine(dsn, pool_pre_ping=True)
-    try:
-        with engine.connect() as conn:
-            trans = conn.begin()
-            result = conn.execute(text(sql), params or {})
-            affected = result.rowcount
-            if affected is not None and affected >= 0 and affected > max_rows:
-                trans.rollback()
-                return affected, True
-            trans.commit()
-            return (affected if affected is not None and affected >= 0 else 0), False
-    finally:
-        engine.dispose()
+    engine = _engine_for(dsn)  # pooled + reused; never disposed per query
+    with engine.connect() as conn:
+        trans = conn.begin()
+        result = conn.execute(text(sql), params or {})
+        affected = result.rowcount
+        if affected is not None and affected >= 0 and affected > max_rows:
+            trans.rollback()
+            return affected, True
+        trans.commit()
+        return (affected if affected is not None and affected >= 0 else 0), False
 
 
 def execute_query(
@@ -160,7 +200,8 @@ def execute_query(
     if connector.kind != "database":
         raise ValueError(f"connector '{connector_name}' is not a database connector")
 
-    verb, err = _classify(sql)
+    dsn = decrypt_secret(connector.auth_secret_encrypted)
+    verb, err = _classify(sql, sql_guard._dialect_for(dsn))
     resource = f"db:{connector_name}"
     action_type = f"db.{verb.lower()}" if verb else "db.query"
     ledger = AuditLedger(db)
@@ -200,7 +241,6 @@ def execute_query(
         )
 
     # Permitted — run it against the vaulted DSN and redact the results.
-    dsn = decrypt_secret(connector.auth_secret_encrypted)
     try:
         columns, rows = _run_query(dsn, sql, params or {})
     except SQLAlchemyError as exc:
@@ -289,7 +329,8 @@ def execute_write(
     if not connector.writable:
         return _deny("connector is read-only (writes are disabled)", "db.write")
 
-    verb, err = _classify_write(sql)
+    dsn = decrypt_secret(connector.auth_secret_encrypted)
+    verb, err = _classify_write(sql, sql_guard._dialect_for(dsn))
     action_type = f"db.{verb.lower()}" if verb else "db.write"
     if err is not None:
         return _deny(f"Write rejected: {err}", action_type)
@@ -307,7 +348,6 @@ def execute_write(
         return QueryResult(executed=False, decision=auth.decision,
                            audit_record=auth.audit_record, approval=auth.approval)
 
-    dsn = decrypt_secret(connector.auth_secret_encrypted)
     try:
         affected, capped = _run_write(dsn, sql, params or {}, connector.max_write_rows)
     except SQLAlchemyError as exc:
