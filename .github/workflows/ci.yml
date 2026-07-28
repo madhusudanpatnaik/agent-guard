@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt -e .
+          pip install ruff mypy
+
+      - name: Lint (ruff)
+        run: ruff check agentops sdk examples tests scripts
+
+      - name: Type-check (mypy)
+        run: mypy agentops --ignore-missing-imports
+
+      - name: Test (pytest)
+        env:
+          AGENTOPS_SECRET_KEY: ci-secret-key-not-used-in-prod-000000000000
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t agentops:ci .

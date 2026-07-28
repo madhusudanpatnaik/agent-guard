@@ -1,0 +1,34 @@
+services:
+  agentops:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      AGENTOPS_ENVIRONMENT: production
+      # Required — compose refuses to start if these are unset (fail closed).
+      # Generate one with:  openssl rand -hex 32
+      AGENTOPS_SECRET_KEY: ${AGENTOPS_SECRET_KEY:?set AGENTOPS_SECRET_KEY (openssl rand -hex 32)}
+      AGENTOPS_DATABASE_URL: postgresql+psycopg://agentops:agentops@db:5432/agentops
+      AGENTOPS_BOOTSTRAP_ADMIN_EMAIL: admin@agentops.local
+      AGENTOPS_BOOTSTRAP_ADMIN_PASSWORD: ${AGENTOPS_BOOTSTRAP_ADMIN_PASSWORD:?set AGENTOPS_BOOTSTRAP_ADMIN_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentops
+      POSTGRES_PASSWORD: agentops
+      POSTGRES_DB: agentops
+    volumes:
+      - agentops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  agentops_pgdata:
