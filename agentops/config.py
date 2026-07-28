@@ -196,6 +196,14 @@ class Settings(BaseSettings):
     # Extra DLP providers layered on top of the built-in regex scanner.
     # "presidio" enables ML-based PII entity recognition (needs presidio-analyzer).
     dlp_providers: list[str] = []
+    # Bounds on the ML pass. NLP inference is 20-80ms per string against a ~2.3ms
+    # p50 authorization budget, so an unbounded walk over a payload tree can add
+    # seconds to a single decision. These caps keep the hot path predictable; when
+    # one trips, the ML pass degrades to "regex only" for the remainder and says
+    # so in the logs rather than silently returning a partial scan as a clean one.
+    dlp_ml_max_strings: int = 32        # strings analyzed per payload
+    dlp_ml_max_string_chars: int = 4096  # per-string truncation before analysis
+    dlp_ml_budget_ms: float = 250.0     # wall-clock ceiling for the whole ML pass
     # Detect prompt-injection / jailbreak attempts in agent-bound text.
     llm_guard_enabled: bool = True
     # Optional LLM-native moderation webhook (POST text -> {"flagged": bool,...}).

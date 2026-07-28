@@ -17,6 +17,7 @@ additive risk signals; the regex core already redacts the concrete secrets).
 from __future__ import annotations
 
 import logging
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -58,37 +59,89 @@ def _presidio_analyzer():
 
 
 def _presidio_findings(payload: Any):
+    """Run the ML entity pass under explicit string, size, and time bounds.
+
+    Every governed action pays for this synchronously, so the pass is capped
+    three ways: how many strings it will look at, how much of each string, and
+    how long the whole thing may take. Without those, one request carrying a
+    large payload tree turns a ~2.3ms authorization into seconds of inference —
+    and because the gateway fails closed, that is an availability problem, not
+    just a slow request.
+
+    Exceeding a bound degrades to "regex only" for the remainder, which is safe:
+    the regex core has already redacted the concrete secrets and these findings
+    are additive risk signals. It is logged rather than swallowed, because a
+    partial scan reported as a clean scan is how coverage gaps go unnoticed.
+    """
     from .scanner import DLPFinding, _redact
 
     analyzer = _presidio_analyzer()
     if analyzer is None:
         return []
-    findings = []
+
+    settings = get_settings()
+    max_strings = max(0, settings.dlp_ml_max_strings)
+    max_chars = max(0, settings.dlp_ml_max_string_chars)
+    deadline = time.monotonic() + max(0.0, settings.dlp_ml_budget_ms) / 1000.0
+
+    findings: list[Any] = []
+    analyzed = 0
+    skipped = 0
+    truncated = 0
+    out_of_time = False
 
     def walk(node: Any, path: str) -> None:
+        nonlocal analyzed, skipped, truncated, out_of_time
+        if out_of_time:
+            return
         if isinstance(node, dict):
             for k, v in node.items():
                 walk(v, f"{path}.{k}")
-        elif isinstance(node, (list, tuple)):
+            return
+        if isinstance(node, (list, tuple)):
             for i, v in enumerate(node):
                 walk(v, f"{path}[{i}]")
-        elif isinstance(node, str) and node.strip():
-            try:
-                results = analyzer.analyze(text=node, language="en")
-            except Exception as exc:  # noqa: BLE001
-                _log.warning("Presidio analyze failed: %s", exc)
-                return
-            for r in results:
-                mapping = _PRESIDIO_ENTITIES.get(r.entity_type)
-                if not mapping or r.score < 0.5:
-                    continue
-                name, severity = mapping
-                findings.append(DLPFinding(
-                    detector=f"ml_{name}", severity=severity, count=1,
-                    sample=_redact(node[r.start:r.end]), path=path,
-                ))
+            return
+        if not isinstance(node, str) or not node.strip():
+            return
+
+        if analyzed >= max_strings:
+            skipped += 1
+            return
+        # Checked per string rather than once, so a single pathological input
+        # cannot blow the budget for everything that follows it.
+        if time.monotonic() >= deadline:
+            out_of_time = True
+            return
+
+        text = node
+        if max_chars and len(text) > max_chars:
+            text = text[:max_chars]
+            truncated += 1
+        analyzed += 1
+        try:
+            results = analyzer.analyze(text=text, language="en")
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("Presidio analyze failed: %s", exc)
+            return
+        for r in results:
+            mapping = _PRESIDIO_ENTITIES.get(r.entity_type)
+            if not mapping or r.score < 0.5:
+                continue
+            name, severity = mapping
+            findings.append(DLPFinding(
+                detector=f"ml_{name}", severity=severity, count=1,
+                sample=_redact(text[r.start:r.end]), path=path,
+            ))
 
     walk(payload, "$")
+
+    if out_of_time or skipped or truncated:
+        _log.warning(
+            "ML DLP pass was bounded: analyzed=%d skipped_strings=%d truncated_strings=%d "
+            "out_of_time=%s — remaining content covered by the regex core only",
+            analyzed, skipped, truncated, out_of_time,
+        )
     return findings
 
 
