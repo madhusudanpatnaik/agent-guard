@@ -6,7 +6,7 @@
 > in the loop for high-stakes actions, and records everything in a tamper-evident
 > audit ledger.
 
-Python 3.11+ · runs on SQLite out of the box · 326 passing tests · Apache-2.0
+Python 3.11+ · runs on SQLite out of the box · 343 passing tests · Apache-2.0
 
 ---
 
@@ -218,6 +218,7 @@ Runnable demos: [`pitch_demo.py`](examples/pitch_demo.py) (client scenario),
 | **RBAC policy engine** | Over-privileged agents | Roles → glob policies with deny-overrides-allow, priorities, per-action verbs |
 | **Data-exfiltration / DLP** | Secrets & PII leaking into prompts, logs, the model provider, or an external endpoint | 15 detectors (cloud keys, private keys, JWTs, PANs w/ Luhn, SSN, PII, high-entropy); redacts requests **and** upstream responses |
 | **Custom DLP detectors** | House secret formats the built-ins don't know (internal token prefixes, employee ids) | Operator-defined, org-scoped regex detectors validated at write time and merged with the built-ins on the request path — extend DLP with no code change or fork |
+| **Compliance evidence reports** | "Prove to my SOC 2 / HIPAA / PCI / GDPR auditor that our AI agents are governed" | Generates an auditor-ready report mapping control families to concrete ledger evidence, embedding a hash-chain integrity attestation, and **honestly flagging controls with no evidence** as gaps rather than passing them |
 | **Policy change management** | No record of who changed a rule, and no way to undo a bad edit | Every policy create/update/delete is snapshotted; view full history and **roll back** any policy to a prior version (rollback is itself recorded) |
 | **Human-in-the-loop** | Unauthorized high-stakes actions (large payouts, destructive ops) | Per-policy approval flags & monetary thresholds; agent proceeds only after sign-off |
 | **Adaptive risk scoring** | Actions that are individually in-policy but collectively suspicious | A transparent 0–100 score per decision (DLP severity + egress + amount + resource/action novelty + off-hours + volume z-score); above a threshold it auto-escalates an ALLOW to human approval |
@@ -285,6 +286,7 @@ agentops/
 ├── containment.py       org kill switch state + time-bound auto-expiry
 ├── counters.py          pluggable rate/quota — DB default · Redis sliding window
 ├── risk.py              adaptive 0–100 risk score + explainable factors + step-up
+├── compliance.py        SOC2/GDPR/HIPAA/PCI evidence reports + integrity attestation
 ├── anomaly.py           behavioral baselines over the ledger (novelty, off-hours, z-score)
 ├── reputation.py        rolling per-agent trust score from ledger + alert history
 ├── policy/analyzer.py   policy intelligence — shadow/redundant/broad/unused + hotspots
@@ -398,6 +400,7 @@ Operational CLI: `agentops serve | proxy | seed | verify | rotate-vault-key --ne
 | Auth (console) | `POST /api/auth/login`, `GET /api/auth/me`, `GET /api/auth/oidc/login`, `.../oidc/callback` (SSO) |
 | Organizations | `GET/POST /api/orgs`, `POST /api/orgs/{id}/users` (superadmin), `POST /api/orgs/containment` (kill switch, optional `duration_minutes`), `.../{id}/containment` (superadmin) |
 | Roles & policies | `GET/POST/PUT/DELETE /api/roles`, `.../{id}/policies`, `.../policies/{pid}/versions` + `/rollback/{v}` (change history), `.../policies/preview`, `.../{id}/analysis`, `.../{id}/recommendations` (+ `/apply`) |
+| Compliance | `GET /api/compliance/frameworks`, `POST /api/compliance/report` (+ `.md`), `GET /api/compliance/summary` |
 | DLP detectors | `GET/POST/PUT/DELETE /api/detectors`, `.../test` (custom org-scoped detectors) |
 | Agents | `GET/POST/PUT/DELETE /api/agents`, `.../status`, `.../rotate-key`, `.../reputation` |
 | Connectors | `GET/POST/PUT/DELETE /api/connectors`, `.../{id}/test` |
@@ -418,9 +421,9 @@ Full interactive spec at **`/docs`** (OpenAPI).
 
 ```bash
 make ci            # lint + type-check + tests (what CI runs)
-make test          # 326 tests
+make test          # 343 tests
 make lint          # ruff
-make typecheck     # mypy (clean, 59 modules)
+make typecheck     # mypy (clean, 61 modules)
 make cover         # coverage report
 ```
 

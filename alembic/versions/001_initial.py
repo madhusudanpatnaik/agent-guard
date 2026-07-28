@@ -125,6 +125,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("seq", name="uq_audit_seq"),
     )
     op.create_index("ix_audit_agent_created", "audit_records", ["agent_id", "created_at"])
+    op.create_index("ix_audit_role_org", "audit_records", ["role_name", "org_id"])
 
     # Connectors (unique per org; DB connectors may be writable, row-capped)
     op.create_table(
@@ -228,6 +229,7 @@ def downgrade() -> None:
     op.drop_table("detectors")
     op.drop_table("policy_versions")
     op.drop_table("connectors")
+    op.drop_index("ix_audit_role_org", table_name="audit_records")
     op.drop_index("ix_audit_agent_created", table_name="audit_records")
     op.drop_table("audit_records")
     op.drop_table("agents")

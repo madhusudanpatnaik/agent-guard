@@ -508,6 +508,41 @@ class AlertOut(BaseModel):
     created_at: datetime
 
 
+# --- Compliance reporting ---------------------------------------------------
+
+class FrameworkControlOut(BaseModel):
+    id: str
+    title: str
+    requirement: str
+    how: str
+
+
+class FrameworkOut(BaseModel):
+    id: str
+    name: str
+    controls: list[FrameworkControlOut] = Field(default_factory=list)
+
+
+class ComplianceReportRequest(BaseModel):
+    framework: str = Field(examples=["soc2", "gdpr", "hipaa", "pci_dss"])
+    since: datetime | None = None   # defaults to trailing 90 days
+    until: datetime | None = None
+
+
+class ComplianceReportOut(BaseModel):
+    framework: str
+    framework_name: str
+    organization: str
+    org_slug: str
+    period_start: str
+    period_end: str
+    ledger_attestation: dict[str, Any]
+    coverage: dict[str, Any]
+    gaps: list[str] = Field(default_factory=list)
+    controls: list[dict[str, Any]] = Field(default_factory=list)
+    disclaimer: str
+
+
 # --- Dashboard --------------------------------------------------------------
 
 class DashboardStats(BaseModel):

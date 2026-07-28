@@ -10,6 +10,8 @@ reused by the in-process SDK, a sidecar, or a future gRPC surface.
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -48,14 +50,41 @@ from .utils import build_preview, canonical_json, payload_fingerprint
 from .vault import decrypt_secret
 
 
+# Per-org custom-detector cache. Detectors are edited by an operator (rare) but
+# read on EVERY authorization, so an uncached lookup is a pure per-request tax.
+# A short TTL bounds staleness without needing cross-process invalidation: a new
+# detector becomes active within the TTL, and the write path clears it locally.
+_DETECTOR_TTL_SECONDS = 30.0
+_detector_cache: dict[int | None, tuple[float, list[dict]]] = {}
+_detector_lock = threading.Lock()
+
+
+def invalidate_detector_cache(org_id: int | None = None) -> None:
+    """Drop cached detectors (call after a detector write; all orgs if None)."""
+    with _detector_lock:
+        if org_id is None:
+            _detector_cache.clear()
+        else:
+            _detector_cache.pop(org_id, None)
+
+
 def _load_custom_detectors(db: Session, org_id: int | None) -> list[dict]:
     """Enabled operator-defined DLP detectors for an org (empty if none)."""
     from .models import Detector
 
+    now = time.monotonic()
+    with _detector_lock:
+        hit = _detector_cache.get(org_id)
+        if hit is not None and now - hit[0] < _DETECTOR_TTL_SECONDS:
+            return hit[1]
+
     rows = db.scalars(
         select(Detector).where(Detector.org_id == org_id, Detector.enabled.is_(True))
     )
-    return [{"name": d.name, "pattern": d.pattern, "severity": d.severity} for d in rows]
+    specs = [{"name": d.name, "pattern": d.pattern, "severity": d.severity} for d in rows]
+    with _detector_lock:
+        _detector_cache[org_id] = (now, specs)
+    return specs
 
 
 def _scan_request_payload(payload, custom_detectors=None):
