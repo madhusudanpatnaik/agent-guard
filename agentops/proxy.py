@@ -27,6 +27,8 @@ import json
 import logging
 import socketserver
 import ssl
+import threading
+from collections.abc import Callable
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
@@ -124,6 +126,22 @@ def _resolve_agent(db, key: str) -> Agent | None:
     return None
 
 
+def _active_agent(db, agent_id: int) -> Agent | None:
+    """Re-read an agent, enforcing that it is still ACTIVE.
+
+    ``authorize_action`` re-checks *org* containment on every call but not
+    per-agent status, which is resolved once at connection setup. Re-reading per
+    request means an agent suspended by auto-containment (alerts_service) stops
+    being served on a connection it had already opened, rather than only on its
+    next one.
+
+    Deliberately does not touch ``last_seen_at``: a write per request on a
+    keep-alive tunnel is not worth the precision.
+    """
+    agent = db.get(Agent, agent_id)
+    return agent if agent is not None and agent.status == AgentStatus.ACTIVE else None
+
+
 def _govern(db, agent, *, action_type, resource, payload):
     return authorize_action(db, agent, ActionRequest(
         action_type=action_type, resource=resource, payload=payload, metadata={}))
@@ -184,6 +202,13 @@ class _Handler(socketserver.StreamRequestHandler):
                                 b"supply the agent API key via Proxy-Authorization",
                                 {"Proxy-Authenticate": 'Basic realm="AgentOps"'})
                 return
+            # The database session is scoped to authentication and governance
+            # ONLY. A WebSocket tunnel lives as long as the socket does — hours
+            # — so holding a pooled connection across one lets db_pool_size +
+            # max_overflow tunnels drain the pool and stall the whole control
+            # plane (verified: 8 tunnels held 8 connections). Long-lived work is
+            # therefore deferred and run after the session is released.
+            tunnel: Callable[[], None] | None = None
             with SessionLocal() as db:
                 agent = _resolve_agent(db, key)
                 if agent is None:
@@ -191,24 +216,25 @@ class _Handler(socketserver.StreamRequestHandler):
                                     b"invalid agent API key")
                     return
                 if method.upper() == "CONNECT":
-                    self._handle_connect(db, agent, target)
+                    tunnel = self._handle_connect(db, agent, target)
                 else:
-                    self._handle_plain(db, agent, method, target, headers)
+                    tunnel = self._handle_plain(db, agent, method, target, headers)
+            if tunnel is not None:
+                tunnel()
         except Exception:
             _log.exception("proxy connection failed")
 
     # -- plain HTTP (absolute-form) --------------------------------------
-    def _handle_plain(self, db, agent, method, target, headers) -> None:
+    def _handle_plain(self, db, agent, method, target, headers) -> Callable[[], None] | None:
         parsed = urlparse(target)
         if not parsed.scheme or not parsed.hostname:
             _write_response(self.connection, 400, "Bad Request", b"absolute-form URL required")
-            return
+            return None
 
         # WebSocket upgrade: govern the handshake by policy before allowing the
         # connection to be established (the agent cannot open a socket we deny).
         if headers.get("upgrade", "").lower() == "websocket":
-            self._handle_ws_upgrade(db, agent, target, parsed, headers)
-            return
+            return self._handle_ws_upgrade(db, agent, target, parsed, headers)
 
         resource = f"http:{parsed.netloc}{parsed.path or '/'}"
         action = f"http.{method.lower()}"
@@ -216,40 +242,48 @@ class _Handler(socketserver.StreamRequestHandler):
             body = _read_body(self.rfile, headers)
         except ValueError:
             _write_response(self.connection, 413, "Payload Too Large", b"body too large")
-            return
+            return None
         self._govern_forward(db, agent, method, target, resource, action, headers, body)
+        return None
 
     # -- WebSocket upgrade (handshake governance) ------------------------
-    def _handle_ws_upgrade(self, db, agent, target, parsed, headers) -> None:
+    def _handle_ws_upgrade(self, db, agent, target, parsed, headers) -> Callable[[], None] | None:
+        """Govern the handshake now; return the byte pump to run without a session."""
         resource = f"ws:{parsed.netloc}{parsed.path or '/'}"
         gate = _govern(db, agent, action_type="ws.connect", resource=resource, payload=None)
         if gate.decision.decision != Decision.ALLOW:
             _blocked(self.connection, gate.decision)
-            return
-        # Allowed: open the upstream socket, replay the handshake, then pump bytes
-        # bidirectionally until either side closes.
-        import socket as _socket
+            return None
 
         host, port = parsed.hostname, parsed.port or 80
-        try:
-            upstream = _socket.create_connection((host, port), timeout=30)
-        except OSError:
-            _write_response(self.connection, 502, "Bad Gateway", b"ws upstream unreachable")
-            return
         path = parsed.path or "/"
         if parsed.query:
             path += "?" + parsed.query
         handshake = f"GET {path} HTTP/1.1\r\n" + "".join(
             f"{k}: {v}\r\n" for k, v in headers.items() if k.lower() != "proxy-authorization"
         ) + "\r\n"
-        try:
-            upstream.sendall(handshake.encode("latin-1"))
-            self._pump_bidirectional(self.connection, upstream)
-        finally:
+
+        def tunnel() -> None:
+            # Runs after the DB session is released: opening the upstream socket
+            # and relaying bytes needs no database access, and this is the part
+            # that lasts for the entire life of the WebSocket.
+            import socket as _socket
+
             try:
-                upstream.close()
+                upstream = _socket.create_connection((host, port), timeout=30)
             except OSError:
-                pass
+                _write_response(self.connection, 502, "Bad Gateway", b"ws upstream unreachable")
+                return
+            try:
+                upstream.sendall(handshake.encode("latin-1"))
+                self._pump_bidirectional(self.connection, upstream)
+            finally:
+                try:
+                    upstream.close()
+                except OSError:
+                    pass
+
+        return tunnel
 
     @staticmethod
     def _pump_bidirectional(a, b) -> None:
@@ -278,7 +312,8 @@ class _Handler(socketserver.StreamRequestHandler):
                     return
 
     # -- HTTPS via TLS interception --------------------------------------
-    def _handle_connect(self, db, agent, target) -> None:
+    def _handle_connect(self, db, agent, target) -> Callable[[], None] | None:
+        """Gate the destination now; return the decrypted tunnel to run sessionless."""
         host, _, port_s = target.partition(":")
         port = int(port_s or 443)
 
@@ -286,45 +321,66 @@ class _Handler(socketserver.StreamRequestHandler):
         gate = _govern(db, agent, action_type="http.connect", resource=f"https:{host}", payload=None)
         if gate.decision.decision != Decision.ALLOW:
             _blocked(self.connection, gate.decision)
-            return
+            return None
 
-        self.connection.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        agent_id = agent.id
 
-        assert _CA is not None
-        try:
-            tls_conn = _CA.context_for_host(host).wrap_socket(self.connection, server_side=True)
-        except (ssl.SSLError, OSError):
-            return  # agent didn't complete TLS (e.g. no CA installed) — nothing to do
+        def tunnel() -> None:
+            # Deferred so no DB connection is held across the TLS handshake,
+            # which mints a per-host leaf certificate and then waits on the
+            # *client* — a peer that stalls there would otherwise pin a pooled
+            # connection until the 60s socket timeout.
+            self.connection.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
 
-        rfile = tls_conn.makefile("rb")
-        try:
-            # Handle one or more requests on the decrypted tunnel (keep-alive).
-            while True:
-                line = _readline(rfile)
-                if not line:
-                    break
-                parts = line.split(" ")
-                if len(parts) != 3:
-                    break
-                method, path, _ver = parts
-                headers = _read_headers(rfile)
-                try:
-                    body = _read_body(rfile, headers)
-                except ValueError:
-                    _write_response(tls_conn, 413, "Payload Too Large", b"body too large")
-                    break
-                resource = f"https:{host}{path.split('?', 1)[0]}"
-                action = f"http.{method.lower()}"
-                url = f"https://{host}:{port}{path}"
-                keep = self._govern_forward(db, agent, method, url, resource, action, headers,
-                                            body, out=tls_conn)
-                if not keep:
-                    break
-        finally:
+            assert _CA is not None
             try:
-                tls_conn.close()
-            except OSError:
-                pass
+                tls_conn = _CA.context_for_host(host).wrap_socket(
+                    self.connection, server_side=True)
+            except (ssl.SSLError, OSError):
+                return  # agent didn't complete TLS (e.g. no CA installed)
+
+            rfile = tls_conn.makefile("rb")
+            try:
+                # Handle one or more requests on the decrypted tunnel (keep-alive).
+                while True:
+                    line = _readline(rfile)
+                    if not line:
+                        break
+                    parts = line.split(" ")
+                    if len(parts) != 3:
+                        break
+                    method, path, _ver = parts
+                    headers = _read_headers(rfile)
+                    try:
+                        body = _read_body(rfile, headers)
+                    except ValueError:
+                        _write_response(tls_conn, 413, "Payload Too Large", b"body too large")
+                        break
+                    resource = f"https:{host}{path.split('?', 1)[0]}"
+                    action = f"http.{method.lower()}"
+                    url = f"https://{host}:{port}{path}"
+                    # A fresh, short-lived session per request rather than one
+                    # held for the tunnel, and re-reading the agent is what makes
+                    # a suspension apply to a connection that is already open.
+                    with SessionLocal() as rdb:
+                        live = _active_agent(rdb, agent_id)
+                        if live is None:
+                            _write_response(tls_conn, 403, "Forbidden",
+                                            b'{"agentops":"blocked",'
+                                            b'"reason":"agent is suspended"}',
+                                            {"Content-Type": "application/json"})
+                            break
+                        keep = self._govern_forward(rdb, live, method, url, resource, action,
+                                                    headers, body, out=tls_conn)
+                    if not keep:
+                        break
+            finally:
+                try:
+                    tls_conn.close()
+                except OSError:
+                    pass
+
+        return tunnel
 
     # -- shared: govern then forward or block ----------------------------
     def _govern_forward(self, db, agent, method, url, resource, action, headers, body,
@@ -350,15 +406,53 @@ class _Handler(socketserver.StreamRequestHandler):
 
 
 class _ThreadingProxy(socketserver.ThreadingTCPServer):
+    """Thread-per-connection, with a hard ceiling on concurrent connections.
+
+    ``ThreadingTCPServer`` spawns a thread per accepted socket with no bound, so
+    anything that can reach the proxy port forces unbounded thread creation just
+    by opening sockets. Tunnels are long-lived, so a fixed-size worker pool would
+    deadlock instead; a semaphore with immediate rejection is the honest
+    trade-off — shed load visibly rather than degrade the whole process.
+    """
+
     daemon_threads = True
     allow_reuse_address = True
+
+    def __init__(self, *args, max_connections: int, **kwargs):
+        self._slots = threading.BoundedSemaphore(max_connections)
+        self._max_connections = max_connections
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address) -> None:
+        if not self._slots.acquire(blocking=False):
+            _log.warning("proxy at connection limit (%d); rejecting %s",
+                         self._max_connections, client_address)
+            try:
+                _write_response(request, 503, "Service Unavailable",
+                                b"proxy connection limit reached")
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address) -> None:
+        # Released here rather than in shutdown_request so a slot is held for
+        # exactly the lifetime of the handling thread, tunnels included.
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 
 def serve_proxy(host: str, port: int) -> None:
     """Run the governing forward proxy (blocking). Call from a thread or the CLI."""
     global _CA
-    _CA = ProxyCA(get_settings().proxy_ca_dir)
-    server = _ThreadingProxy((host, port), _Handler)
+    settings = get_settings()
+    _CA = ProxyCA(settings.proxy_ca_dir)
+    server = _ThreadingProxy((host, port), _Handler,
+                             max_connections=settings.proxy_max_connections)
     _log.info("AgentOps forward proxy listening on %s:%d", host, port)
     print(f"AgentOps forward proxy on {host}:{port}")
     print(f"  Agents: HTTP(S)_PROXY=http://agent:<api-key>@{host}:{port}")

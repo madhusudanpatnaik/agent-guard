@@ -178,6 +178,12 @@ class Settings(BaseSettings):
     # Verify the real origin's certificate when the proxy re-encrypts to it.
     # Only disable for local testing against self-signed origins.
     proxy_verify_upstream_tls: bool = True
+    # Hard ceiling on concurrent proxy connections. The proxy is thread-per-
+    # connection, so without a bound anything that can reach the port forces
+    # unbounded thread creation. Excess connections are rejected with 503 rather
+    # than queued, because tunnels are long-lived and queueing would just hide
+    # the backlog. Raise it if you legitimately run many concurrent tunnels.
+    proxy_max_connections: int = 256
 
     # --- Scale: rate/quota counter backend -----------------------------
     # "db"    — COUNT(*) over the audit ledger (default, zero-infra, correct).
