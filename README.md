@@ -339,9 +339,15 @@ certification, but it produces the enforcement and evidence auditors ask for:
 - **SSRF guard** — connector HTTP targets that resolve to private / loopback /
   link-local / cloud-metadata addresses are refused (on by default in production),
   so a tenant can't point a connector at internal infrastructure.
-- **Defense-in-depth read-only SQL** — read queries run inside a database-enforced
-  read-only transaction, so a statement that leads with `SELECT`/`WITH` but hides a
-  write (Postgres `SELECT ... INTO`, data-modifying CTEs) is rejected by the DB itself.
+- **Parsed, not pattern-matched, SQL** — governed queries are parsed into a
+  **SQLGlot AST** and judged on their structure, because text classification of SQL
+  is not securable: `SELECT db/**/link_connect(...)` and
+  `WITH d AS (DELETE ... RETURNING *) SELECT * FROM d` are valid SQL that defeat any
+  first-token-plus-deny-list scheme (both were real bypasses of the previous
+  classifier). A write node *anywhere* in the tree fails a read, dangerous functions
+  are matched on parsed call nodes at any depth, and the extracted table/column set
+  enables column-level authorization that text matching cannot express. Reads then
+  still execute inside a database-enforced read-only transaction — defense in depth.
 - **Data protection** — DLP redaction of PII/secrets in both directions;
   credentials encrypted at rest and never returned by the API.
 - **Non-repudiation & audit export** — append-only, keyed hash-chained ledger with
@@ -390,6 +396,35 @@ Key settings (all `AGENTOPS_*`, see [`.env.example`](.env.example)):
 | `SIEM_WEBHOOK_URL` | _(off)_ | POST every decision as JSON to your SIEM |
 
 Operational CLI: `agentops serve | proxy | seed | verify | rotate-vault-key --new-key <k>`.
+
+### Rotating `SECRET_KEY` breaks the ledger chain — on purpose
+
+`SECRET_KEY` is the HMAC key for the audit chain, so **every historic link is a
+commitment under the key that was in force when it was written**. Change it and
+`/api/audit/verify` will report a hash mismatch at seq 0 — not corruption, but
+the chain correctly refusing to vouch for records it can no longer authenticate.
+That is the property you want: it is exactly what stops an attacker who gains
+database write access from re-forging history under a key of their choosing.
+
+This is why `VAULT_KEY` exists separately and can be rotated on its own
+(`rotate-vault-key` re-encrypts connector secrets in place). There is no
+equivalent for the ledger, because re-HMACing the chain under a new key is
+indistinguishable from the forgery the chain is designed to prevent.
+
+To rotate the ledger key, retire the chain rather than rewrite it:
+
+1. Run `agentops verify` and **archive the output together with the anchor file**
+   (`AUDIT_ANCHOR_PATH`) — that pair is the proof the old chain was intact at the
+   moment of cutover. Export the trail to CSV/JSONL for your retention store.
+2. If you anchor to a transparency log or a TSA, keep those receipts: they remain
+   independently verifiable against the archived rows without the old key.
+3. Set the new `SECRET_KEY`, archive-and-clear the old ledger rows and anchor
+   file, and let the new chain start from a fresh genesis.
+
+Verification after that point covers the new chain; the old one is attested by
+the archived verify output and anchors. Plan rotation on a maintenance boundary,
+and treat losing `SECRET_KEY` as losing the ability to *prove* history — the
+records remain readable, but their non-repudiation does not survive.
 
 ---
 
