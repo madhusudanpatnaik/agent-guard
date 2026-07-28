@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.env
+*.db
+*.sqlite3
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+
+# runtime logs
+*.log
+
+# proxy TLS-interception CA
+agentops-ca/
+*.crt
+*.key
+
+# local dev tooling (not part of the product)
+.agents/
