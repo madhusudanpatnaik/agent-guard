@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 
@@ -19,6 +20,7 @@ from ..schemas import LoginRequest, TokenResponse, UserOut
 from ..security import create_access_token, get_current_user, hash_password, verify_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_log = logging.getLogger("agentops.auth")
 
 # Precomputed once so the "no such user" path performs the same PBKDF2 work as a
 # real verification, closing the account-enumeration timing side channel.
@@ -144,9 +146,21 @@ def oidc_callback(
         # Auto-provision into the default org with a least-privilege role; "!oidc"
         # is an unusable password hash so SSO accounts can never sign in by password.
         org = db.scalar(select(Organization).where(Organization.slug == "default"))
+        if org is None:
+            # Bootstrap invariant broken (no "default" org exists). Falling back
+            # to org_id=None would be worse than refusing: SQLAlchemy compiles
+            # `column == None` to `IS NULL`, so every future orphaned user would
+            # match every other orphaned user under tenancy.scope() and share
+            # visibility into each other's org-scoped resources. Fail closed.
+            _log.error("OIDC auto-provision refused: no 'default' organization exists")
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "SSO sign-in is temporarily unavailable (no default organization "
+                "configured) — contact an operator",
+            )
         user = User(
             email=email, password_hash="!oidc", role=settings.oidc_default_role,
-            org_id=org.id if org else None,
+            org_id=org.id,
         )
         db.add(user)
         db.commit()
