@@ -22,8 +22,13 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.5",
-    "mypy>=1.10",
+    # Exact-pinned, not a floor: ruff 0.16 changed its default rule set and
+    # surfaced 294 findings across this codebase that 0.15 never flagged, which
+    # is exactly what silently broke CI three days after the initial commit.
+    # Linters are not like runtime libs — "latest" is a moving enforcement
+    # target, not a bugfix. Bump deliberately, verify clean, then bump this pin.
+    "ruff==0.15.21",
+    "mypy==2.3.0",
 ]
 # Enterprise/scale adapters. Each is optional: the corresponding feature has a
 # dependency-free default and lights up only when its extra is installed.

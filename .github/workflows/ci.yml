@@ -22,10 +22,14 @@ jobs:
           cache: pip
 
       - name: Install
+        # -e .[dev] rather than a separate `pip install ruff mypy`: two places
+        # naming dev-tool versions is how they drift apart. pyproject.toml's
+        # [dev] extra pins ruff/mypy exactly, precisely because an unpinned
+        # `pip install ruff` here once silently jumped a minor version and
+        # broke this job on its default rule-set change alone, no code change.
         run: |
           python -m pip install -U pip
-          pip install -r requirements.txt -e .
-          pip install ruff mypy
+          pip install -r requirements.txt -e ".[dev]"
 
       - name: Lint (ruff)
         run: ruff check agentops sdk examples tests scripts
@@ -77,7 +81,12 @@ jobs:
       # someone has reviewed a real report and either fixed or explicitly
       # accepted what it finds.
       - name: Scan image for vulnerabilities (Trivy, report-only)
-        uses: aquasecurity/trivy-action@0.28.0
+        # Pinned by commit SHA rather than a mutable tag, per standard
+        # third-party-action hardening: a tag can be force-moved, a commit SHA
+        # cannot. Verified real via the GitHub API before pinning — an earlier
+        # version of this line named a tag that never existed at all (0.28.0),
+        # caught only by actually watching the workflow run, not by guessing.
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: agentops:ci
           format: sarif
