@@ -19,6 +19,19 @@ def test_scim_disabled_without_token(client):
     assert r.status_code == 404
 
 
+def test_scim_refuses_when_default_org_is_missing(client, scim, db):
+    """A valid token must not provision (or serve) anything without a resolvable
+    org -- see test_oidc.py's matching test for why org_id=None is unsafe, not
+    merely inconvenient."""
+    from agentops.models import Organization
+
+    db.query(Organization).filter(Organization.slug == "default").delete()
+    db.commit()
+
+    r = client.post("/api/scim/v2/Users", json={"userName": "x@corp"}, headers=scim)
+    assert r.status_code == 404
+
+
 def test_scim_requires_valid_bearer(client, scim):
     r = client.post("/api/scim/v2/Users", json={"userName": "x@corp"},
                     headers={"Authorization": "Bearer wrong"})

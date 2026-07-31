@@ -142,3 +142,26 @@ def test_oidc_disabled_by_default(client):
     # No oidc_setup fixture -> OIDC not configured.
     assert client.get("/api/auth/oidc/login").status_code == 400
     assert client.get("/api/auth/oidc/callback?code=x&state=y").status_code == 400
+
+
+def test_auto_provision_refuses_when_default_org_is_missing(client, oidc_setup, db):
+    """A missing bootstrap org must refuse provisioning, not create an orphan.
+
+    Falling back to org_id=None would be worse than refusing: SQLAlchemy
+    compiles `column == None` to `IS NULL`, so a second orphaned user created
+    later would match this one under tenancy.scope() and share visibility into
+    its org-scoped resources -- a cross-tenant leak between two accounts that
+    were never meant to be related at all.
+    """
+    from agentops.models import Organization
+
+    db.query(Organization).filter(Organization.slug == "default").delete()
+    db.commit()
+
+    r = _callback_with(client, oidc_setup, _claims(email="new-user@corp.example"))
+    assert r.status_code == 500
+    assert "default organization" in r.json()["detail"].lower()
+
+    from agentops.models import User
+
+    assert db.query(User).filter(User.email == "new-user@corp.example").first() is None
