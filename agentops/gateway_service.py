@@ -27,6 +27,8 @@ from .audit.ledger import AuditLedger
 from .config import get_settings
 from .containment import active as containment_active
 from .counters import get_rate_backend
+from . import distributed_state
+from .distributed_state import redis_get_detectors, redis_invalidate_detectors, redis_set_detectors
 from .dlp.providers import scan_with_providers
 from .dlp.scanner import DLPFinding, MEDIUM, scan_payload
 from .egress import check_egress
@@ -54,6 +56,9 @@ from .vault import decrypt_secret
 # read on EVERY authorization, so an uncached lookup is a pure per-request tax.
 # A short TTL bounds staleness without needing cross-process invalidation: a new
 # detector becomes active within the TTL, and the write path clears it locally.
+# When distributed_state_backend=redis, invalidation is exact instead of
+# TTL-bounded: every worker sees a write on its very next request, not just
+# the worker that made it — see distributed_state.py.
 _DETECTOR_TTL_SECONDS = 30.0
 _detector_cache: dict[int | None, tuple[float, list[dict]]] = {}
 _detector_lock = threading.Lock()
@@ -67,10 +72,20 @@ def invalidate_detector_cache(org_id: int | None = None) -> None:
         else:
             _detector_cache.pop(org_id, None)
 
+    client = distributed_state.get_client()
+    if client is not None:
+        redis_invalidate_detectors(client, org_id)
+
 
 def _load_custom_detectors(db: Session, org_id: int | None) -> list[dict]:
     """Enabled operator-defined DLP detectors for an org (empty if none)."""
     from .models import Detector
+
+    client = distributed_state.get_client()
+    if client is not None:
+        cached = redis_get_detectors(client, org_id)
+        if cached is not None:
+            return cached
 
     now = time.monotonic()
     with _detector_lock:
@@ -84,6 +99,8 @@ def _load_custom_detectors(db: Session, org_id: int | None) -> list[dict]:
     specs = [{"name": d.name, "pattern": d.pattern, "severity": d.severity} for d in rows]
     with _detector_lock:
         _detector_cache[org_id] = (now, specs)
+    if client is not None:
+        redis_set_detectors(client, org_id, specs, _DETECTOR_TTL_SECONDS)
     return specs
 
 

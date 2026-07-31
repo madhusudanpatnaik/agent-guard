@@ -21,9 +21,23 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable
+from typing import Callable, Protocol
 
 import httpx
+
+from . import distributed_state
+from .distributed_state import RedisCircuitBreaker
+
+
+class _Breaker(Protocol):
+    """Structural type satisfied by both CircuitBreaker and RedisCircuitBreaker
+    — resilient_request() only needs these three methods, not which backs them."""
+
+    name: str
+
+    def allow(self) -> bool: ...
+    def record_success(self) -> None: ...
+    def record_failure(self) -> None: ...
 
 
 class UpstreamUnavailable(Exception):
@@ -80,14 +94,27 @@ _registry_lock = threading.Lock()
 
 
 def get_breaker(name: str, *, fail_threshold: int = 5,
-                cooldown_seconds: float = 30.0) -> CircuitBreaker:
+                cooldown_seconds: float = 30.0) -> _Breaker:
+    """Return the breaker for ``name`` — Redis-backed when configured (see
+    distributed_state.py), otherwise the in-process one. Same three-method
+    interface either way, so resilient_request() and every caller don't need
+    to know which. As with the pre-existing in-process registry, the first
+    call for a given name wins its fail_threshold/cooldown_seconds; later
+    calls with different values are silently ignored for that name — that
+    was already true before this change, not introduced by it.
+    """
     with _registry_lock:
         breaker = _registry.get(name)
         if breaker is None:
             breaker = CircuitBreaker(name, fail_threshold=fail_threshold,
                                      cooldown_seconds=cooldown_seconds)
             _registry[name] = breaker
+
+    client = distributed_state.get_client()
+    if client is None:
         return breaker
+    return RedisCircuitBreaker(client, name, fail_threshold=fail_threshold,
+                               cooldown_seconds=cooldown_seconds, fallback=breaker)
 
 
 def reset_breakers() -> None:
@@ -97,7 +124,7 @@ def reset_breakers() -> None:
 
 
 def resilient_request(
-    breaker: CircuitBreaker,
+    breaker: _Breaker,
     do_request: Callable[[], httpx.Response],
     *,
     retries: int = 2,

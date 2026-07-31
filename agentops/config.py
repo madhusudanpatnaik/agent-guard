@@ -192,6 +192,19 @@ class Settings(BaseSettings):
     rate_limit_backend: str = "db"
     redis_url: str = ""  # e.g. redis://localhost:6379/0
 
+    # --- Scale: circuit breaker / DLP detector cache / alert throttle --
+    # "memory" — per-process state (default, zero-infra). Correct for a single
+    #            worker; under N workers or replicas, "N failures -> open"
+    #            silently becomes "N failures per worker", and a widened DLP
+    #            detector or an alert-dedup window only applies to the worker
+    #            that made the write until the in-process TTL/cache expires.
+    # "redis"  — shared via the same redis_url as rate_limit_backend, so every
+    #            worker/replica agrees on breaker state, sees a new detector
+    #            immediately instead of after a per-worker TTL, and dedups
+    #            alerts fleet-wide. Falls back to in-process state on any
+    #            Redis error — this must never be able to block governance.
+    distributed_state_backend: str = "memory"
+
     # --- Guardrails: pluggable DLP + LLM-security -----------------------
     # Extra DLP providers layered on top of the built-in regex scanner.
     # "presidio" enables ML-based PII entity recognition (needs presidio-analyzer).
