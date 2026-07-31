@@ -38,9 +38,54 @@ jobs:
           AGENTOPS_SECRET_KEY: ci-secret-key-not-used-in-prod-000000000000
         run: pytest -q
 
+  # A product whose entire pitch is governance rigor should scan its own supply
+  # chain. This job hard-fails the build: verified locally against the current
+  # dependency set before wiring this in (`pip-audit --strict` -> "No known
+  # vulnerabilities found"), so starting strict doesn't break anything today —
+  # a future finding here is a real, new advisory worth blocking on.
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -e . pip-audit
+      - name: Audit dependencies (pip-audit)
+        run: pip-audit --strict
+
   docker:
     runs-on: ubuntu-latest
+    # Explicit, not relied-on-by-default: the SARIF upload step needs
+    # security-events: write, which isn't guaranteed by every repo's default
+    # GITHUB_TOKEN permissions (particularly restrictive for pull_request runs).
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t agentops:ci .
+
+      # Report-only for now, deliberately: unlike pip-audit above, this was NOT
+      # verified against a real scan before being wired in (no local Docker
+      # daemon available while authoring it), and a python:3.12-slim base image
+      # commonly carries OS-level CVEs outside this project's direct control —
+      # the honest first step is surfacing them for triage, not gating the
+      # build on findings nobody has looked at yet. Flip exit-code to '1' once
+      # someone has reviewed a real report and either fixed or explicitly
+      # accepted what it finds.
+      - name: Scan image for vulnerabilities (Trivy, report-only)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: agentops:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+      - name: Upload scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
