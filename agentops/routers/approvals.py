@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -24,12 +24,14 @@ def list_approvals(
     db: Session = Depends(get_db),
     user: User = Depends(require_admin),
     status_filter: str | None = None,
+    limit: int = Query(default=100, le=1000),
+    offset: int = Query(default=0, ge=0),
 ) -> list[Approval]:
     sweep_expired(db)  # keep the queue truthful without a background worker
     stmt = scope(select(Approval), Approval, user).order_by(Approval.created_at.desc())
     if status_filter:
         stmt = stmt.where(Approval.status == status_filter)
-    return list(db.scalars(stmt))
+    return list(db.scalars(stmt.offset(offset).limit(limit)))
 
 
 @router.post("/{approval_id}/resolve", response_model=ApprovalOut)
