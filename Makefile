@@ -10,7 +10,7 @@ install:
 	$(BOOTSTRAP_PY) -m venv $(VENV)
 	$(PIP) install -U pip
 	$(PIP) install -r requirements.txt
-	$(PIP) install -e .
+	$(PIP) install -e ".[dev]"
 
 seed:
 	$(VENV)/bin/agentops seed
