@@ -18,6 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
+from . import distributed_state
+from .distributed_state import redis_should_dispatch
 from .models import Agent, AgentStatus, Alert, AlertSeverity, AuditRecord, Decision
 from .webhooks import post_json
 
@@ -25,8 +27,9 @@ _log = logging.getLogger("agentops.alerts")
 
 _SEVERITY_RANK = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
-# Webhook dedup throttle: last-dispatch time per (org, kind, agent). In-memory
-# (single-instance); a multi-instance deployment would key this in Redis.
+# Webhook dedup throttle: last-dispatch time per (org, kind, agent). Used
+# directly when distributed_state_backend=memory (the default), and as the
+# fallback when Redis is configured but errors — see distributed_state.py.
 _dispatch_throttle: dict[tuple, float] = {}
 _throttle_lock = threading.Lock()
 
@@ -37,11 +40,7 @@ def reset_alert_throttle() -> None:
         _dispatch_throttle.clear()
 
 
-def _should_dispatch(alert: Alert, window: int) -> bool:
-    """True if a webhook for this (org, kind, agent) may fire now (dedup gate)."""
-    if window <= 0:
-        return True
-    key = (alert.org_id, alert.kind, alert.agent_id)
+def _should_dispatch_in_process(key: tuple, window: int) -> bool:
     now = time.monotonic()
     with _throttle_lock:
         last = _dispatch_throttle.get(key)
@@ -49,6 +48,26 @@ def _should_dispatch(alert: Alert, window: int) -> bool:
             return False
         _dispatch_throttle[key] = now
         return True
+
+
+def _should_dispatch(alert: Alert, window: int) -> bool:
+    """True if a webhook for this (org, kind, agent) may fire now (dedup gate).
+
+    Redis-backed when configured, so a fleet of workers dedups against each
+    other instead of each sending its own copy of the same notification —
+    falls straight through to the in-process gate on any Redis error.
+    """
+    if window <= 0:
+        return True
+    key = (alert.org_id, alert.kind, alert.agent_id)
+
+    client = distributed_state.get_client()
+    if client is not None:
+        result = redis_should_dispatch(client, ":".join(map(str, key)), window)
+        if result is not None:
+            return result
+
+    return _should_dispatch_in_process(key, window)
 
 
 def raise_alert(

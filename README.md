@@ -251,6 +251,7 @@ pip install agentops[enterprise]   # redis + presidio + kafka + otel
 | Area | Default | Turn it on |
 |---|---|---|
 | **Rate/quota at scale** | DB `COUNT(*)` | `AGENTOPS_RATE_LIMIT_BACKEND=redis` + `REDIS_URL` — sorted-set sliding window shared across gateway nodes, auto-fallback to DB |
+| **Circuit breaker / DLP detector cache / alert throttle at scale** | in-process | `AGENTOPS_DISTRIBUTED_STATE_BACKEND=redis` + `REDIS_URL` — every worker/replica shares breaker state and dedups alerts instead of each enforcing its own, auto-fallback to in-process |
 | **Policy-as-code** | built-in engine | `AGENTOPS_POLICY_ENGINE=opa\|cedar` + URL — OPA/Rego or Cedar owns the verdict; AgentOps still enforces DLP/quota/approvals/ledger |
 | **ABAC** | always on | policy `conditions.attributes` on `subject.*` / `resource.*` / `env.*` (eq/in/gt/glob/exists); subject+env are server-set |
 | **LLM-native guardrails** | always on | prompt-injection / jailbreak / tool-abuse detectors — alerted and egress-blocked |

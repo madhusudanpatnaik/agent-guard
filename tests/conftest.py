@@ -28,6 +28,7 @@ def fresh_db():
     from agentops.audit.anchors import reset_anchor_cache
     from agentops.audit.ledger import reset_chain_cache
     from agentops.counters import reset_rate_backend_cache
+    from agentops.distributed_state import reset_distributed_state_cache
     from agentops.gateway_service import invalidate_detector_cache
 
     Base.metadata.drop_all(bind=engine)
@@ -40,6 +41,7 @@ def fresh_db():
     reset_chain_cache()
     reset_anchor_cache()
     reset_rate_backend_cache()
+    reset_distributed_state_cache()
     invalidate_detector_cache()  # per-org DLP detector cache must not leak
     reset_breakers()
     reset_alert_throttle()
