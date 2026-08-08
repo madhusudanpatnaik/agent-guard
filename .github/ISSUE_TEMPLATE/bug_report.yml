@@ -1,0 +1,57 @@
+name: Bug report
+description: Something behaves incorrectly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report security vulnerabilities here.** Use the
+        [Security tab](https://github.com/madhusudanpatnaik/agent-guard/security)
+        so the report stays private. See SECURITY.md.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Policy engine (RBAC/ABAC)
+        - DLP / exfiltration blocking
+        - Credential isolation
+        - Human approvals
+        - Risk scoring
+        - Audit ledger
+        - SDK
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+      placeholder: "0.1.0, or a commit SHA"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Steps, or a minimal snippet. A rough repro beats a precise description.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Python version, OS, Docker or local, database.
