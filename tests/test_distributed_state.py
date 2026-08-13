@@ -9,15 +9,15 @@ from __future__ import annotations
 
 import pytest
 
-from agentops import distributed_state
-from agentops.distributed_state import (
+from agentguard import distributed_state
+from agentguard.distributed_state import (
     RedisCircuitBreaker,
     redis_get_detectors,
     redis_invalidate_detectors,
     redis_set_detectors,
     redis_should_dispatch,
 )
-from agentops.resilience import CircuitBreaker
+from agentguard.resilience import CircuitBreaker
 
 
 class FakeRedis:
@@ -97,14 +97,14 @@ def _reset(monkeypatch):
 # --- get_client() resolution -------------------------------------------------
 
 def test_get_client_defaults_to_none(monkeypatch):
-    from agentops.config import get_settings
+    from agentguard.config import get_settings
     monkeypatch.setattr(get_settings(), "distributed_state_backend", "memory")
     distributed_state.reset_distributed_state_cache()
     assert distributed_state.get_client() is None
 
 
 def test_get_client_none_when_redis_configured_without_url(monkeypatch):
-    from agentops.config import get_settings
+    from agentguard.config import get_settings
     monkeypatch.setattr(get_settings(), "distributed_state_backend", "redis")
     monkeypatch.setattr(get_settings(), "redis_url", "")
     distributed_state.reset_distributed_state_cache()
@@ -186,8 +186,8 @@ def test_breaker_isolates_by_connector_name():
 # --- get_breaker() integration -----------------------------------------------
 
 def test_get_breaker_returns_redis_backed_when_configured(monkeypatch):
-    from agentops.config import get_settings
-    from agentops import resilience
+    from agentguard.config import get_settings
+    from agentguard import resilience
 
     monkeypatch.setattr(get_settings(), "distributed_state_backend", "redis")
     monkeypatch.setattr(get_settings(), "redis_url", "redis://fake/0")
@@ -201,7 +201,7 @@ def test_get_breaker_returns_redis_backed_when_configured(monkeypatch):
 
 
 def test_get_breaker_returns_in_process_by_default():
-    from agentops import resilience
+    from agentguard import resilience
     resilience.reset_breakers()
     breaker = resilience.get_breaker("test-conn-2")
     assert isinstance(breaker, CircuitBreaker)
@@ -228,9 +228,9 @@ def test_should_dispatch_returns_none_on_error():
 
 
 def test_alerts_service_dedup_uses_redis_when_configured(monkeypatch):
-    from agentops.config import get_settings
-    from agentops import alerts_service
-    from agentops.models import Alert
+    from agentguard.config import get_settings
+    from agentguard import alerts_service
+    from agentguard.models import Alert
 
     monkeypatch.setattr(get_settings(), "distributed_state_backend", "redis")
     monkeypatch.setattr(get_settings(), "redis_url", "redis://fake/0")
@@ -282,8 +282,8 @@ def test_gateway_service_uses_redis_detector_cache_immediately_across_workers(
     """The actual improvement over the in-process cache: invalidation is exact,
     not TTL-bounded, so a second 'worker' sees the change on its very next call
     rather than waiting up to _DETECTOR_TTL_SECONDS."""
-    from agentops.config import get_settings
-    from agentops import gateway_service
+    from agentguard.config import get_settings
+    from agentguard import gateway_service
 
     monkeypatch.setattr(get_settings(), "distributed_state_backend", "redis")
     monkeypatch.setattr(get_settings(), "redis_url", "redis://fake/0")

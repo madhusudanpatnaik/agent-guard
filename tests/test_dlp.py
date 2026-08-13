@@ -2,7 +2,7 @@
 
 import base64 as _b64
 
-from agentops.dlp.scanner import CRITICAL, scan_payload
+from agentguard.dlp.scanner import CRITICAL, scan_payload
 
 
 def test_detects_aws_access_key():

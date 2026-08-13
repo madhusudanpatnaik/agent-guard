@@ -1,8 +1,8 @@
 """Tests for the security-hardening fixes from the adversarial review."""
 
-from agentops.config import DEV_SECRET_DEFAULT, Settings
-from agentops.models import Decision, Effect, Policy
-from agentops.policy.engine import ActionRequest, PolicyEngine
+from agentguard.config import DEV_SECRET_DEFAULT, Settings
+from agentguard.models import Decision, Effect, Policy
+from agentguard.policy.engine import ActionRequest, PolicyEngine
 
 
 def _policy(pid, effect, resource, actions, **kw):

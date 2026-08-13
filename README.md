@@ -1,12 +1,12 @@
-# AgentOps — the control plane for autonomous AI agents
+# AgentGuard — the control plane for autonomous AI agents
 
 > **The firewall and identity layer for the agentic era.** Before an enterprise
-> lets AI agents call APIs, move money, or touch a database, AgentOps decides what
+> lets AI agents call APIs, move money, or touch a database, AgentGuard decides what
 > each agent is allowed to do, stops it from leaking sensitive data, keeps a human
 > in the loop for high-stakes actions, and records everything in a tamper-evident
 > audit ledger.
 
-Python 3.11+ · runs on SQLite out of the box · 343 passing tests · Apache-2.0
+Python 3.11+ · runs on SQLite out of the box · 439 passing tests · Apache-2.0
 
 ---
 
@@ -19,13 +19,13 @@ and a prompt injection, a hallucinated tool call, or a bad instruction can do
 real damage. Today's LLMOps tools watch chat *outputs*; nothing sits in the path
 of what agents actually *do*.
 
-**AgentOps is that missing layer.** It is to AI agents what a firewall + Active
+**AgentGuard is that missing layer.** It is to AI agents what a firewall + Active
 Directory is to employees and services: a mandatory control point that every
 agent action flows through.
 
 ```
    ┌──────────────┐   "can I do X?" / "do X for me"   ┌────────────────────────┐
-   │   AI AGENT    │ ────────────────────────────────▶ │   AgentOps Control     │
+   │   AI AGENT    │ ────────────────────────────────▶ │   AgentGuard Control     │
    │ (LLM + tools) │                                    │        Plane           │
    └──────────────┘ ◀──────────────────────────────── │                        │
         no creds        allow / deny / needs-approval   │  • RBAC policy engine  │
@@ -49,14 +49,14 @@ agent action flows through.
 Requires **Python 3.11+**. No external services — SQLite out of the box.
 
 ```bash
-cd agentops
+cd agentguard
 make install     # create a venv and install everything
 make seed        # demo roles, policies, agents, connectors
 make serve       # console at http://localhost:8080 · API docs at /docs
 ```
 
-Open **http://localhost:8080** and sign in with `admin@agentops.local` / `admin`.
-(Port 8080 busy? run `AGENTOPS_PORT=8090 make serve`.)
+Open **http://localhost:8080** and sign in with `admin@agentguard.local` / `admin`.
+(Port 8080 busy? run `AGENTGUARD_PORT=8090 make serve`.)
 
 Then run the **client pitch demo** — a narrated, real end-to-end scenario you can
 show a buyer (it self-provisions its agents and boots a mock upstream for you):
@@ -100,7 +100,7 @@ AUDIT & COMPLIANCE
 
 ## Who it's for
 
-| Industry | The agent | What AgentOps enforces |
+| Industry | The agent | What AgentGuard enforces |
 |---|---|---|
 | **Financial services** | refund / payments / trading bots | spending ceilings, dual-control approvals, immutable audit for regulators |
 | **Healthcare** | intake / records / scheduling agents | PHI never leaves to the model provider; least-privilege access; HIPAA-aligned logs |
@@ -117,29 +117,29 @@ An agent you don't fully trust can just… not call your API. So the primary mod
 requires **no agent code at all**.
 
 **Transparent proxy (recommended — zero integration, no bypass).** Point the
-agent's egress at the AgentOps proxy — the *operator* sets `HTTP_PROXY` (and a
+agent's egress at the AgentGuard proxy — the *operator* sets `HTTP_PROXY` (and a
 network egress rule blocks everything else), not the agent. The agent keeps using
 plain `requests`/`httpx`, and every call is policy-checked, DLP-scanned, logged,
 and blockable. The agent has no way to opt out:
 
 ```bash
-agentops proxy --port 8888          # run the forward proxy (shares the plane's DB)
+agentguard proxy --port 8888          # run the forward proxy (shares the plane's DB)
 # then, in the agent's environment (set by you, not the agent):
-export HTTP_PROXY=http://agent:<api-key>@agentops-host:8888
-export HTTPS_PROXY=http://agent:<api-key>@agentops-host:8888
-# install the AgentOps CA (printed on proxy start) so HTTPS can be inspected:
-export REQUESTS_CA_BUNDLE=/path/to/agentops-ca.crt   # or add it to the OS trust store
+export HTTP_PROXY=http://agent:<api-key>@agentguard-host:8888
+export HTTPS_PROXY=http://agent:<api-key>@agentguard-host:8888
+# install the AgentGuard CA (printed on proxy start) so HTTPS can be inspected:
+export REQUESTS_CA_BUNDLE=/path/to/agentguard-ca.crt   # or add it to the OS trust store
 ```
 
 ```python
-# the agent's code — completely unmodified, no AgentOps import:
+# the agent's code — completely unmodified, no AgentGuard import:
 import httpx
 httpx.get("https://internal-api/customers/42")            # ALLOWED by policy → forwarded
 httpx.post("https://hooks.slack.com/…", json={"x": AWS_KEY})  # BLOCKED — DLP reads the TLS body
 ```
 
 **HTTPS is fully inspected**, not just tunneled: the proxy terminates TLS with a
-certificate signed by the AgentOps CA (which you install in the agent's trust
+certificate signed by the AgentGuard CA (which you install in the agent's trust
 store), decrypts and governs the request, then re-encrypts to the real origin
 (verifying the origin's cert). So DLP and policy apply to actual `https://` bodies.
 
@@ -150,9 +150,9 @@ governed end-to-end (allowed, policy-denied, and DLP-blocked) with no SDK.
 upstream credential (so the agent never has it), call it explicitly:
 
 ```python
-from agentops_sdk import AgentOpsClient
+from agentguard_sdk import AgentGuardClient
 
-ops = AgentOpsClient("http://localhost:8080", api_key="agentops_sk_...")
+ops = AgentGuardClient("http://localhost:8080", api_key="agentguard_sk_...")
 
 # The plane checks policy + DLP, injects the real credential, calls the upstream,
 # scrubs the response of secrets/PII, logs it, and returns the safe result.
@@ -175,7 +175,7 @@ res = ops.write("tickets", "UPDATE tickets SET status = :s WHERE id = :id",
 write). The agent asks first and is trusted to honor the decision:
 
 ```python
-from agentops_sdk import AgentOpsClient, AuthorizationDenied
+from agentguard_sdk import AgentGuardClient, AuthorizationDenied
 
 with ops.guard("db.write", "db:customers:1042", metadata={"amount": 250}):
     do_the_write()          # runs only if allowed (or approved); raises if denied
@@ -187,7 +187,7 @@ function calling, Anthropic tool use, or an MCP tool server — they all emit a
 your handler runs:
 
 ```python
-from agentops_sdk import GovernedToolRouter
+from agentguard_sdk import GovernedToolRouter
 
 router = GovernedToolRouter(ops)
 router.register("issue_refund", issue_refund,
@@ -215,7 +215,7 @@ Runnable demos: [`pitch_demo.py`](examples/pitch_demo.py) (client scenario),
 
 | Capability | What it stops | How |
 |---|---|---|
-| **Transparent proxy** | An untrusted agent bypassing governance entirely (it just doesn't call your API) | Route the agent's egress through the AgentOps forward proxy — every request is policy-checked, DLP-scanned, logged, and blockable with **no agent code and no opt-out** |
+| **Transparent proxy** | An untrusted agent bypassing governance entirely (it just doesn't call your API) | Route the agent's egress through the AgentGuard forward proxy — every request is policy-checked, DLP-scanned, logged, and blockable with **no agent code and no opt-out** |
 | **Enforced execution (HTTP)** | An agent holding upstream credentials | The plane holds the credential and makes the call; the agent never has it |
 | **Governed SQL (read)** | Agents holding DB credentials or vacuuming up PII over SQL | The plane holds the DSN and runs the query; only `SELECT`/`WITH`, row-capped, results DLP-redacted |
 | **Governed SQL (write)** | Agents running unbounded or destructive writes | Writable connectors only; `INSERT`/`UPDATE`/`DELETE` (never DDL) in a transaction, **rolled back** if the row-affected cap is exceeded, with policy + approval gating |
@@ -233,7 +233,7 @@ Runnable demos: [`pitch_demo.py`](examples/pitch_demo.py) (client scenario),
 | **Policy intelligence** | Dead, redundant, or dangerously broad policies and coverage gaps | Static + data-driven analysis per role: shadowed allows, duplicates, overly-broad grants, never-matched policies, and top denial hotspots |
 | **Policy recommendations** | Recurring legitimate access that keeps getting default-denied | Generates candidate allow rules from recurring default-deny gaps (per-id resources generalized to globs, confidence-scored), one-click adoptable — never suggests undoing an intentional deny/DLP block |
 | **Safe-apply impact preview** | Adopting a policy that quietly permits more than intended | Dry-runs any candidate allow against the role's real denied traffic, reporting how many actions it would newly permit, flagging those that carried DLP findings, and warning on overly-broad rules — before anything is written |
-| **Signed webhooks** | Spoofed or tampered alert/SIEM deliveries | Every outbound webhook is HMAC-SHA256 signed (`X-AgentOps-Signature`) over the exact body so receivers verify authenticity + integrity |
+| **Signed webhooks** | Spoofed or tampered alert/SIEM deliveries | Every outbound webhook is HMAC-SHA256 signed (`X-AgentGuard-Signature`) over the exact body so receivers verify authenticity + integrity |
 | **Spend / rate / time limits** | Runaway loops, out-of-window actions, over-limit spend | `max_amount`, `require_approval_over`, `time_window`, `rate_limit`, per-agent quota |
 | **Credential vault** | A DB leak exposing upstream credentials | Connector secrets encrypted at rest (Fernet); rotatable without touching the ledger |
 | **Tamper-evident audit** | Silent log tampering; disputes over "what did the agent do?" | Keyed-HMAC hash-chained ledger + out-of-band head anchor; `/audit/verify` proves integrity |
@@ -248,23 +248,23 @@ when its optional extra is installed — so the base stays air-gap-friendly and
 single-binary, and you opt into heavy deps per feature:
 
 ```bash
-pip install agentops[enterprise]   # redis + presidio + kafka + otel
-# or à la carte: agentops[redis] / [dlp-ml] / [brokers] / [otel]
+pip install agentguard[enterprise]   # redis + presidio + kafka + otel
+# or à la carte: agentguard[redis] / [dlp-ml] / [brokers] / [otel]
 ```
 
 | Area | Default | Turn it on |
 |---|---|---|
-| **Rate/quota at scale** | DB `COUNT(*)` | `AGENTOPS_RATE_LIMIT_BACKEND=redis` + `REDIS_URL` — sorted-set sliding window shared across gateway nodes, auto-fallback to DB |
-| **Circuit breaker / DLP detector cache / alert throttle at scale** | in-process | `AGENTOPS_DISTRIBUTED_STATE_BACKEND=redis` + `REDIS_URL` — every worker/replica shares breaker state and dedups alerts instead of each enforcing its own, auto-fallback to in-process |
-| **Policy-as-code** | built-in engine | `AGENTOPS_POLICY_ENGINE=opa\|cedar` + URL — OPA/Rego or Cedar owns the verdict; AgentOps still enforces DLP/quota/approvals/ledger |
+| **Rate/quota at scale** | DB `COUNT(*)` | `AGENTGUARD_RATE_LIMIT_BACKEND=redis` + `REDIS_URL` — sorted-set sliding window shared across gateway nodes, auto-fallback to DB |
+| **Circuit breaker / DLP detector cache / alert throttle at scale** | in-process | `AGENTGUARD_DISTRIBUTED_STATE_BACKEND=redis` + `REDIS_URL` — every worker/replica shares breaker state and dedups alerts instead of each enforcing its own, auto-fallback to in-process |
+| **Policy-as-code** | built-in engine | `AGENTGUARD_POLICY_ENGINE=opa\|cedar` + URL — OPA/Rego or Cedar owns the verdict; AgentGuard still enforces DLP/quota/approvals/ledger |
 | **ABAC** | always on | policy `conditions.attributes` on `subject.*` / `resource.*` / `env.*` (eq/in/gt/glob/exists); subject+env are server-set |
 | **LLM-native guardrails** | always on | prompt-injection / jailbreak / tool-abuse detectors — alerted and egress-blocked |
-| **ML DLP** | regex core | `AGENTOPS_DLP_PROVIDERS=presidio` — context-aware PII on top of regex |
+| **ML DLP** | regex core | `AGENTGUARD_DLP_PROVIDERS=presidio` — context-aware PII on top of regex |
 | **Message brokers** | — | register a `kafka` connector; agents call `ops.publish(connector, topic, msg)` — governed + DLP-scanned + logged |
 | **WebSocket** | — | the proxy governs the WS handshake by policy before the socket opens |
-| **Distributed audit anchor** | local file | `AGENTOPS_AUDIT_ANCHOR_BACKENDS=file,transparency_log,rfc3161` — Rekor-style log + RFC-3161 TSA timestamp tokens |
-| **Tracing** | off | `AGENTOPS_OTEL_ENABLED=true` — OTel spans across authorize → proxy → upstream with W3C context propagation |
-| **SCIM 2.0** | off | `AGENTOPS_SCIM_BEARER_TOKEN=…` — Okta/Azure AD push user create/deactivate to `/api/scim/v2/Users` |
+| **Distributed audit anchor** | local file | `AGENTGUARD_AUDIT_ANCHOR_BACKENDS=file,transparency_log,rfc3161` — Rekor-style log + RFC-3161 TSA timestamp tokens |
+| **Tracing** | off | `AGENTGUARD_OTEL_ENABLED=true` — OTel spans across authorize → proxy → upstream with W3C context propagation |
+| **SCIM 2.0** | off | `AGENTGUARD_SCIM_BEARER_TOKEN=…` — Okta/Azure AD push user create/deactivate to `/api/scim/v2/Users` |
 
 The heavy adapters degrade safely: a missing package or an unreachable
 Redis/OPA/TSA logs a warning and falls back (Redis→DB, external policy→fail-closed,
@@ -273,11 +273,11 @@ anchors→best-effort) — enabling a feature can never take governance down.
 ## Architecture
 
 ```
-agentops/
+agentguard/
 ├── main.py              app factory · fail-closed prod guard · middleware · routers
 ├── middleware.py        security headers (CSP/HSTS), body-size limit, access logging
 ├── background.py        async approval-expiry sweeper
-├── config.py            all settings via AGENTOPS_* env vars
+├── config.py            all settings via AGENTGUARD_* env vars
 ├── security.py          PBKDF2 passwords · opaque API keys · HS256 JWT (stdlib only)
 ├── oidc.py              enterprise SSO — OIDC ID-token (RS256) validation
 ├── tenancy.py           per-org scoping helpers (multi-tenancy)
@@ -310,7 +310,7 @@ agentops/
 ├── alerts_service.py    detect & respond — risk rules, webhooks, auto-containment
 ├── routers/             auth, orgs, roles, agents, connectors, gateway, approvals, audit, dashboard, simulator, alerts, scim
 └── static/index.html    operator console (zero build step)
-sdk/agentops_sdk/        client library (execute · call · query · write · publish · guard · @governed)
+sdk/agentguard_sdk/        client library (execute · call · query · write · publish · guard · @governed)
     └── integrations.py  GovernedToolRouter (OpenAI/Anthropic/MCP) + LangChain adapter
 examples/                pitch_demo · enforcing_demo · demo_agent · mock_upstream
 ```
@@ -323,7 +323,7 @@ inject credential → call upstream → DLP-scan response → ledger → return 
 
 ## Security & compliance posture
 
-AgentOps is designed to help you satisfy real controls — it does not claim any
+AgentGuard is designed to help you satisfy real controls — it does not claim any
 certification, but it produces the enforcement and evidence auditors ask for:
 
 - **Zero-trust by default** — default-deny, deny-overrides-allow, fail-closed
@@ -382,17 +382,17 @@ management, monitoring), **GDPR / HIPAA** (data minimization, audit trail), and
 **Production (Docker + PostgreSQL):**
 
 ```bash
-export AGENTOPS_SECRET_KEY=$(openssl rand -hex 32) AGENTOPS_BOOTSTRAP_ADMIN_PASSWORD=change-me
+export AGENTGUARD_SECRET_KEY=$(openssl rand -hex 32) AGENTGUARD_BOOTSTRAP_ADMIN_PASSWORD=change-me
 docker compose up --build           # API + console on :8080, Postgres behind it
 ```
 
-Key settings (all `AGENTOPS_*`, see [`.env.example`](.env.example)):
+Key settings (all `AGENTGUARD_*`, see [`.env.example`](.env.example)):
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `SECRET_KEY` | dev default | JWT + ledger HMAC key (**required in prod**) |
 | `VAULT_KEY` | falls back to `SECRET_KEY` | connector-secret encryption (rotate independently) |
-| `DATABASE_URL` | `sqlite:///./agentops.db` | Postgres in prod |
+| `DATABASE_URL` | `sqlite:///./agentguard.db` | Postgres in prod |
 | `DEFAULT_DENY` | `true` | zero-trust: deny actions with no matching allow |
 | `DLP_BLOCK_EGRESS_ON_SECRET` | `true` | block outbound actions carrying secrets |
 | `APPROVAL_TTL_SECONDS` | `3600` | pending approvals expire (fail-closed) |
@@ -400,7 +400,7 @@ Key settings (all `AGENTOPS_*`, see [`.env.example`](.env.example)):
 | `AUDIT_ANCHOR_PATH` | `./…anchor.log` | out-of-band ledger head anchor |
 | `SIEM_WEBHOOK_URL` | _(off)_ | POST every decision as JSON to your SIEM |
 
-Operational CLI: `agentops serve | proxy | seed | verify | rotate-vault-key --new-key <k>`.
+Operational CLI: `agentguard serve | proxy | seed | verify | rotate-vault-key --new-key <k>`.
 
 ### Rotating `SECRET_KEY` breaks the ledger chain — on purpose
 
@@ -418,7 +418,7 @@ indistinguishable from the forgery the chain is designed to prevent.
 
 To rotate the ledger key, retire the chain rather than rewrite it:
 
-1. Run `agentops verify` and **archive the output together with the anchor file**
+1. Run `agentguard verify` and **archive the output together with the anchor file**
    (`AUDIT_ANCHOR_PATH`) — that pair is the proof the old chain was intact at the
    moment of cutover. Export the trail to CSV/JSONL for your retention store.
 2. If you anchor to a transparency log or a TSA, keep those receipts: they remain
@@ -475,7 +475,7 @@ accounting, timing side-channels, tenant isolation, SSRF, and approval replay).
 Engineering hygiene: **296 tests**, `ruff`-clean, **`mypy`-clean** (PEP 561
 `py.typed`), a GitHub Actions pipeline ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))
 that runs lint + type-check + tests on Python 3.11 and 3.12 and builds the Docker
-image, structured JSON-lines logging (`agentops.*` loggers), Alembic migrations,
+image, structured JSON-lines logging (`agentguard.*` loggers), Alembic migrations,
 and a hardened non-root container with a health-check.
 
 ---

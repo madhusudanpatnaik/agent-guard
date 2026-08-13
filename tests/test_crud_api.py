@@ -174,13 +174,13 @@ def test_connector_test_unreachable(client, admin_headers):
 def _admin_org(db):
     from sqlalchemy import select
 
-    from agentops.models import User
-    return db.scalar(select(User).where(User.email == "admin@agentops.local")).org_id
+    from agentguard.models import User
+    return db.scalar(select(User).where(User.email == "admin@agentguard.local")).org_id
 
 
 def test_audit_action_type_filter(client, admin_headers, db):
-    from agentops.audit.ledger import AuditLedger
-    from agentops.models import Decision
+    from agentguard.audit.ledger import AuditLedger
+    from agentguard.models import Decision
     oid = _admin_org(db)
     ledger = AuditLedger(db)
     ledger.append(agent_id=None, agent_name="a", role_name="r", action_type="db.read", resource="db:x", decision=Decision.ALLOW, reason="ok", org_id=oid)
@@ -193,8 +193,8 @@ def test_audit_action_type_filter(client, admin_headers, db):
 
 
 def test_audit_pagination(client, admin_headers, db):
-    from agentops.audit.ledger import AuditLedger
-    from agentops.models import Decision
+    from agentguard.audit.ledger import AuditLedger
+    from agentguard.models import Decision
     oid = _admin_org(db)
     ledger = AuditLedger(db)
     for i in range(10):

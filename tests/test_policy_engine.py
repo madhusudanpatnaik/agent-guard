@@ -2,8 +2,8 @@
 
 from datetime import datetime, timezone
 
-from agentops.models import Decision, Effect, Policy
-from agentops.policy.engine import ActionRequest, PolicyEngine, glob_match
+from agentguard.models import Decision, Effect, Policy
+from agentguard.policy.engine import ActionRequest, PolicyEngine, glob_match
 
 
 def _policy(pid, effect, resource, actions, **kw):

@@ -2,8 +2,8 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    AGENTOPS_HOST=0.0.0.0 \
-    AGENTOPS_PORT=8080
+    AGENTGUARD_HOST=0.0.0.0 \
+    AGENTGUARD_PORT=8080
 
 WORKDIR /app
 
@@ -23,4 +23,4 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/health').status==200 else 1)"
 
-CMD ["agentops", "serve"]
+CMD ["agentguard", "serve"]

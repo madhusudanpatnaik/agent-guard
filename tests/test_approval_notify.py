@@ -4,7 +4,7 @@ import json
 
 import httpx
 
-from agentops.config import get_settings
+from agentguard.config import get_settings
 
 
 def _approval_agent(client, admin_headers):

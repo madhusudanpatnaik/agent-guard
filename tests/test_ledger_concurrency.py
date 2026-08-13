@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import threading
 
-from agentops.audit.ledger import AuditLedger, verify_chain
-from agentops.database import SessionLocal
-from agentops.models import AuditRecord
+from agentguard.audit.ledger import AuditLedger, verify_chain
+from agentguard.database import SessionLocal
+from agentguard.models import AuditRecord
 
 
 def _append(db, name: str) -> None:
@@ -87,8 +87,8 @@ def test_concurrent_appends_produce_a_gapless_sequence():
 
 def test_anchor_head_uses_max_seq_not_last_line(tmp_path, monkeypatch):
     """Anchoring happens outside the append lock, so file order is not seq order."""
-    from agentops import config
-    from agentops.audit import ledger as ledger_mod
+    from agentguard import config
+    from agentguard.audit import ledger as ledger_mod
 
     anchor = tmp_path / "anchor.log"
     # Deliberately out of order: the highest seq is NOT the last line.
@@ -102,8 +102,8 @@ def test_anchor_head_uses_max_seq_not_last_line(tmp_path, monkeypatch):
 
 def test_anchor_head_skips_torn_lines(tmp_path, monkeypatch):
     """A partially-written line must not make the truncation check fail open."""
-    from agentops import config
-    from agentops.audit import ledger as ledger_mod
+    from agentguard import config
+    from agentguard.audit import ledger as ledger_mod
 
     anchor = tmp_path / "anchor.log"
     anchor.write_text("3\taaa\ngarbage-no-tab\n4\tbbb\n", encoding="utf-8")

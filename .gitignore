@@ -21,9 +21,10 @@ htmlcov/
 *.log
 
 # proxy TLS-interception CA
-agentops-ca/
+agentguard-ca/
 *.crt
 *.key
 
 # local dev tooling (not part of the product)
 .agents/
+.claude/

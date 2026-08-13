@@ -1,4 +1,4 @@
-# AgentOps Roadmap
+# AgentGuard Roadmap
 
 ## v0.1.0 — MVP (Current)
 - [x] RBAC policy engine with glob matching, deny-overrides, constraints
@@ -24,7 +24,7 @@
 
 Delivered as **pluggable adapters**: each has a dependency-free default and
 activates only when its optional extra is installed (`pip install
-agentops[enterprise]`), so the air-gap-friendly single-binary story is intact.
+agentguard[enterprise]`), so the air-gap-friendly single-binary story is intact.
 
 ### Identity & authorization
 - [x] Enterprise SSO via OpenID Connect (Okta, Azure AD, Google Workspace) —
@@ -35,7 +35,7 @@ agentops[enterprise]`), so the air-gap-friendly single-binary story is intact.
       with eq/ne/in/gt/glob/exists operators; subject/env attributes are
       server-set and unspoofable
 - [x] **Policy-as-code** — delegate the RBAC verdict to **OPA (Rego)** or
-      **Cedar** over HTTP; AgentOps still enforces DLP/quota/approvals/ledger;
+      **Cedar** over HTTP; AgentGuard still enforces DLP/quota/approvals/ledger;
       fail-closed by default
 
 ### Protocol & connector support

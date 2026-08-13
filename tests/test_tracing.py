@@ -1,7 +1,7 @@
 """Tests for the optional OpenTelemetry tracing shim (no-op path)."""
 
-from agentops import tracing
-from agentops.config import get_settings
+from agentguard import tracing
+from agentguard.config import get_settings
 
 
 def test_span_is_noop_when_inactive():
@@ -73,15 +73,15 @@ def test_real_otel_spans_are_recorded(monkeypatch):
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     # Point the tracing module at our provider directly.
     tracing._reset_for_tests()
-    tracing._tracer = provider.get_tracer("agentops-test")
+    tracing._tracer = provider.get_tracer("agentguard-test")
 
-    with tracing.span("unit.work", **{"agentops.k": "v"}):
+    with tracing.span("unit.work", **{"agentguard.k": "v"}):
         pass
 
     spans = exporter.get_finished_spans()
     assert any(s.name == "unit.work" for s in spans)
     recorded = next(s for s in spans if s.name == "unit.work")
-    assert recorded.attributes.get("agentops.k") == "v"
+    assert recorded.attributes.get("agentguard.k") == "v"
     tracing._reset_for_tests()
 
 
@@ -93,7 +93,7 @@ def test_inject_context_adds_traceparent_with_real_propagator():
 
     tracing._reset_for_tests()
     provider = TracerProvider()
-    tracing._tracer = provider.get_tracer("agentops-test")
+    tracing._tracer = provider.get_tracer("agentguard-test")
     tracing._propagator = get_global_textmap()
     with tracing.span("outer"):
         headers = tracing.inject_context({})

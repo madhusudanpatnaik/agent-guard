@@ -2,8 +2,8 @@
 
 import pytest
 
-from agentops.config import get_settings
-from agentops.egress import _host_is_internal, check_egress
+from agentguard.config import get_settings
+from agentguard.egress import _host_is_internal, check_egress
 
 
 @pytest.mark.parametrize("host,blocked", [

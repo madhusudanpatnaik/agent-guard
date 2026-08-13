@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentops.config import get_settings
+from agentguard.config import get_settings
 
 _TOKEN = "scim-secret-token"
 
@@ -23,7 +23,7 @@ def test_scim_refuses_when_default_org_is_missing(client, scim, db):
     """A valid token must not provision (or serve) anything without a resolvable
     org -- see test_oidc.py's matching test for why org_id=None is unsafe, not
     merely inconvenient."""
-    from agentops.models import Organization
+    from agentguard.models import Organization
 
     db.query(Organization).filter(Organization.slug == "default").delete()
     db.commit()
@@ -50,9 +50,9 @@ def test_scim_create_user(client, scim):
     assert body["id"]
     assert "Location" in r.headers
 
-    # The user actually exists in AgentOps with a least-privilege role.
-    from agentops.database import SessionLocal
-    from agentops.models import User
+    # The user actually exists in AgentGuard with a least-privilege role.
+    from agentguard.database import SessionLocal
+    from agentguard.models import User
     from sqlalchemy import select
     with SessionLocal() as db:
         u = db.scalar(select(User).where(User.email == "alice@corp.example"))

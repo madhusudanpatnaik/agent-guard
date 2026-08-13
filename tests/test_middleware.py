@@ -1,6 +1,6 @@
 """Tests for security middleware: headers, body size limits, login rate limiting."""
 
-from agentops.routers.auth import _login_failures
+from agentguard.routers.auth import _login_failures
 
 
 def test_security_headers_present_on_health(client):
@@ -49,7 +49,7 @@ def test_successful_login_resets_rate_limit(client):
     for _ in range(3):
         client.post("/api/auth/login", json={"email": "bad@x.com", "password": "wrong"})
     # Successful login
-    resp = client.post("/api/auth/login", json={"email": "admin@agentops.local", "password": "admin"})
+    resp = client.post("/api/auth/login", json={"email": "admin@agentguard.local", "password": "admin"})
     assert resp.status_code == 200
     # Counter should be reset — 5 more failures should all be 401
     for i in range(5):

@@ -1,6 +1,6 @@
 """A stand-in for a real internal system (CRM + payments API).
 
-It requires an API key that ONLY the AgentOps control plane holds — agents never
+It requires an API key that ONLY the AgentGuard control plane holds — agents never
 receive it — which is what makes the enforcement demonstrable: without going
 through the plane, an agent cannot authenticate here at all.
 

@@ -1,7 +1,7 @@
 [project]
-name = "agentops"
+name = "agentguard"
 version = "0.1.0"
-description = "AgentOps — an orchestration & governance control plane for autonomous AI agents (the firewall + Active Directory for the agentic era)."
+description = "AgentGuard — an orchestration & governance control plane for autonomous AI agents (the firewall + Active Directory for the agentic era)."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
@@ -49,14 +49,14 @@ enterprise = [
 ]
 
 [project.scripts]
-agentops = "agentops.cli:main"
+agentguard = "agentguard.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agentops", "sdk/agentops_sdk"]
+packages = ["agentguard", "sdk/agentguard_sdk"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -69,6 +69,6 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
-files = ["agentops"]
+files = ["agentguard"]
 warn_unused_ignores = true
 no_implicit_optional = true

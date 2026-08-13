@@ -1,12 +1,12 @@
 """Tests for agent reputation scoring + risk persistence on the ledger."""
 
-from agentops.audit.ledger import AuditLedger, verify_chain
-from agentops.models import Decision
-from agentops.reputation import compute
+from agentguard.audit.ledger import AuditLedger, verify_chain
+from agentguard.models import Decision
+from agentguard.reputation import compute
 
 
 def _agent(db, name="RepBot"):
-    from agentops.models import Agent, Role
+    from agentguard.models import Agent, Role
     role = Role(name=f"role-{name}")
     db.add(role)
     db.flush()
@@ -48,7 +48,7 @@ def test_risk_columns_do_not_break_chain_integrity(db):
 def test_tampering_risk_score_does_not_break_chain(db):
     # Risk is derived analytics, not a governance fact — editing it must NOT be
     # treated as ledger tampering (it isn't part of the hash commitment).
-    from agentops.models import AuditRecord
+    from agentguard.models import AuditRecord
     led = AuditLedger(db)
     led.append(agent_id=1, agent_name="a", role_name="r", action_type="x", resource="y",
                decision=Decision.ALLOW, reason="", risk_score=10)
@@ -95,7 +95,7 @@ def test_high_denial_ratio_lowers_score(db):
 
 
 def test_dlp_incidents_and_alerts_lower_score(db):
-    from agentops.models import Alert, AlertSeverity
+    from agentguard.models import Alert, AlertSeverity
     a = _agent(db)
     led = AuditLedger(db)
     for i in range(4):

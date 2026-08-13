@@ -2,8 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
-from agentops.approvals_service import sweep_expired
-from agentops.models import Approval, ApprovalStatus
+from agentguard.approvals_service import sweep_expired
+from agentguard.models import Approval, ApprovalStatus
 
 
 def test_sweep_expired_transitions_stale(db):
@@ -39,10 +39,10 @@ def test_prometheus_metrics_endpoint(client, admin_headers, db):
     resp = client.get("/api/dashboard/metrics", headers=admin_headers)
     assert resp.status_code == 200
     text = resp.text
-    assert "agentops_agents_total" in text
-    assert "agentops_decisions_total" in text
-    assert "agentops_ledger_valid" in text
-    assert "agentops_connectors_total" in text
+    assert "agentguard_agents_total" in text
+    assert "agentguard_decisions_total" in text
+    assert "agentguard_ledger_valid" in text
+    assert "agentguard_connectors_total" in text
 
 
 def test_dashboard_stats_include_connectors(client, admin_headers):

@@ -1,6 +1,6 @@
-"""AgentOps transparent-proxy demo — govern an agent that uses NO SDK.
+"""AgentGuard transparent-proxy demo — govern an agent that uses NO SDK.
 
-The agent below makes ordinary ``httpx`` calls. It has zero AgentOps code — the
+The agent below makes ordinary ``httpx`` calls. It has zero AgentGuard code — the
 only thing that changed is its ``HTTP_PROXY`` (which in production the operator/
 container sets, and a network egress rule enforces). Every call is still
 policy-checked, DLP-scanned, logged, and blockable, and the agent has no way to
@@ -27,9 +27,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "sdk"))
 
 import httpx  # noqa: E402
 
-URL = os.environ.get("AGENTOPS_URL", "http://localhost:8080")
-ADMIN_EMAIL = os.environ.get("AGENTOPS_ADMIN_EMAIL", "admin@agentops.local")
-ADMIN_PASSWORD = os.environ.get("AGENTOPS_ADMIN_PASSWORD", "admin")
+URL = os.environ.get("AGENTGUARD_URL", "http://localhost:8080")
+ADMIN_EMAIL = os.environ.get("AGENTGUARD_ADMIN_EMAIL", "admin@agentguard.local")
+ADMIN_PASSWORD = os.environ.get("AGENTGUARD_ADMIN_PASSWORD", "admin")
 
 BOLD, DIM, GREEN, RED, RESET = "\033[1m", "\033[2m", "\033[32m", "\033[31m", "\033[0m"
 
@@ -91,11 +91,11 @@ def main() -> int:
     with httpx.Client(base_url=URL, timeout=10, trust_env=False) as admin:
         key = _provision(admin, origin_port)
 
-    # Start a local origin + the AgentOps proxy, both in-process.
+    # Start a local origin + the AgentGuard proxy, both in-process.
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", origin_port), _Origin)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
 
-    from agentops.proxy import serve_proxy
+    from agentguard.proxy import serve_proxy
     threading.Thread(target=serve_proxy, args=("127.0.0.1", proxy_port),
                      daemon=True).start()
     for _ in range(50):
@@ -105,11 +105,11 @@ def main() -> int:
         except OSError:
             time.sleep(0.1)
 
-    print(f"{BOLD}The agent uses a plain httpx client — no AgentOps SDK — with only "
+    print(f"{BOLD}The agent uses a plain httpx client — no AgentGuard SDK — with only "
           f"HTTP_PROXY set.{RESET}")
-    print(f"{DIM}Its egress is routed through the AgentOps proxy on :{proxy_port}.{RESET}\n")
+    print(f"{DIM}Its egress is routed through the AgentGuard proxy on :{proxy_port}.{RESET}\n")
 
-    # NOTE: nothing below imports agentops — this is a vanilla HTTP client.
+    # NOTE: nothing below imports agentguard — this is a vanilla HTTP client.
     agent_http = httpx.Client(proxy=f"http://agent:{key}@127.0.0.1:{proxy_port}", timeout=10)
 
     def call(desc, method, path, **kw):

@@ -13,27 +13,27 @@ install:
 	$(PIP) install -e ".[dev]"
 
 seed:
-	$(VENV)/bin/agentops seed
+	$(VENV)/bin/agentguard seed
 
 serve:
-	$(VENV)/bin/agentops serve --reload
+	$(VENV)/bin/agentguard serve --reload
 
 test:
 	$(VENV)/bin/pytest
 
 cover:
-	$(VENV)/bin/pytest --cov=agentops --cov-report=term-missing
+	$(VENV)/bin/pytest --cov=agentguard --cov-report=term-missing
 
 lint:
-	$(VENV)/bin/ruff check agentops sdk examples tests scripts
+	$(VENV)/bin/ruff check agentguard sdk examples tests scripts
 
 typecheck:
-	$(VENV)/bin/mypy agentops --ignore-missing-imports
+	$(VENV)/bin/mypy agentguard --ignore-missing-imports
 
 ci: lint typecheck test
 
 verify:
-	$(VENV)/bin/agentops verify
+	$(VENV)/bin/agentguard verify
 
 docker:
 	docker compose up --build
@@ -45,4 +45,4 @@ migration:
 	$(VENV)/bin/alembic revision --autogenerate -m "$(msg)"
 
 clean:
-	rm -rf $(VENV) *.db .pytest_cache .ruff_cache __pycache__ agentops/__pycache__
+	rm -rf $(VENV) *.db .pytest_cache .ruff_cache __pycache__ agentguard/__pycache__

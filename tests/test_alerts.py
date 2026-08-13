@@ -2,7 +2,7 @@
 
 import httpx
 
-from agentops.config import get_settings
+from agentguard.config import get_settings
 
 
 def _agent(client, admin_headers, *, resource=None, actions=None):
@@ -51,7 +51,7 @@ def test_acknowledge_alert(client, admin_headers):
     alert = client.get("/api/alerts", headers=admin_headers).json()[0]
     r = client.post(f"/api/alerts/{alert['id']}/ack", headers=admin_headers).json()
     assert r["status"] == "acknowledged"
-    assert r["acknowledged_by"] == "admin@agentops.local"
+    assert r["acknowledged_by"] == "admin@agentguard.local"
 
 
 def test_webhook_is_dispatched_for_high_alert(client, admin_headers, monkeypatch):
@@ -67,7 +67,7 @@ def test_webhook_is_dispatched_for_high_alert(client, admin_headers, monkeypatch
 def test_webhook_is_hmac_signed_when_secret_set(client, admin_headers, monkeypatch):
     import json as _json
 
-    from agentops.webhooks import verify_signature
+    from agentguard.webhooks import verify_signature
     captured = {}
     monkeypatch.setattr(get_settings(), "alert_webhook_url", "https://siem.example/hook")
     monkeypatch.setattr(get_settings(), "webhook_signing_secret", "top-secret")
@@ -75,7 +75,7 @@ def test_webhook_is_hmac_signed_when_secret_set(client, admin_headers, monkeypat
     key = _agent(client, admin_headers, resource="http:x/**", actions=["http.post"])
     _authorize(client, key, "http.post", "http:x/y", payload={"k": "AKIAIOSFODNN7EXAMPLE"})
     body = captured["content"]
-    sig = captured["headers"]["X-AgentOps-Signature"]
+    sig = captured["headers"]["X-AgentGuard-Signature"]
     # The signature verifies over the EXACT bytes posted, and the body is real JSON.
     assert verify_signature(body, sig, "top-secret")
     assert _json.loads(body)["kind"] == "data_exfiltration"

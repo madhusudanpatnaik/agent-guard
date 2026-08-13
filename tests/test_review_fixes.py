@@ -117,9 +117,9 @@ def test_safe_custom_detector_still_works(client, admin_headers):
 # --- Finding: reputation dlp_incidents billable filter ----------------------
 
 def test_reputation_ignores_upstream_response_dlp(db):
-    from agentops.audit.ledger import AuditLedger
-    from agentops.models import Agent, Decision, Role
-    from agentops.reputation import compute
+    from agentguard.audit.ledger import AuditLedger
+    from agentguard.models import Agent, Decision, Role
+    from agentguard.reputation import compute
     role = Role(name="rr")
     db.add(role)
     db.flush()
@@ -151,7 +151,7 @@ def test_approval_restored_when_containment_blocks_execution(client, admin_heade
     # Enforced refund needing approval; approve it; then contain the org so the
     # follow-up execute is denied — the approval must survive (not be consumed).
     UPSTREAM_KEY = "k"
-    import agentops.gateway_service as gs
+    import agentguard.gateway_service as gs
 
     def _handler(request):
         return httpx.Response(200, json={"ok": True})
@@ -196,7 +196,7 @@ def test_approval_restored_when_containment_blocks_execution(client, admin_heade
 # --- Finding: falsy body dropped on execute ---------------------------------
 
 def test_empty_object_body_is_transmitted(client, admin_headers, monkeypatch):
-    import agentops.gateway_service as gs
+    import agentguard.gateway_service as gs
     captured = {}
 
     def _handler(request):

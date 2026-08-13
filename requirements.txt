@@ -1,4 +1,4 @@
-# Runtime dependencies for AgentOps.
+# Runtime dependencies for AgentGuard.
 # Pinned to floors known to work on Python 3.11–3.14.
 fastapi>=0.115
 uvicorn[standard]>=0.30

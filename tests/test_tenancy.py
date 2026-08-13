@@ -16,7 +16,7 @@ def _login(client, email, password):
 @pytest.fixture
 def org_a(client):
     # Bootstrap superadmin, in the "default" org.
-    return _login(client, "admin@agentops.local", "admin")
+    return _login(client, "admin@agentguard.local", "admin")
 
 
 @pytest.fixture

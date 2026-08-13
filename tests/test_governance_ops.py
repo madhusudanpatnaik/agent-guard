@@ -91,9 +91,9 @@ def test_simulate_requires_admin(client):
 def _seed_records(db):
     from sqlalchemy import select
 
-    from agentops.audit.ledger import AuditLedger
-    from agentops.models import Decision, User
-    oid = db.scalar(select(User).where(User.email == "admin@agentops.local")).org_id
+    from agentguard.audit.ledger import AuditLedger
+    from agentguard.models import Decision, User
+    oid = db.scalar(select(User).where(User.email == "admin@agentguard.local")).org_id
     ledger = AuditLedger(db)
     ledger.append(agent_id=None, agent_name="a", role_name="r", action_type="db.read",
                   resource="db:x", decision=Decision.ALLOW, reason="ok", org_id=oid)

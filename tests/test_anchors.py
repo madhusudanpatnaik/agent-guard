@@ -4,14 +4,14 @@ import hashlib
 
 import httpx
 
-from agentops.audit import anchors
-from agentops.audit.anchors import (
+from agentguard.audit import anchors
+from agentguard.audit.anchors import (
     FileAnchor,
     RFC3161Anchor,
     TransparencyLogAnchor,
     build_timestamp_request,
 )
-from agentops.config import get_settings
+from agentguard.config import get_settings
 
 
 # --- file backend -----------------------------------------------------------

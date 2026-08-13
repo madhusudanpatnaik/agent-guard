@@ -100,8 +100,8 @@ def test_timed_containment_auto_expires(client, admin_headers):
     # Simulate the window elapsing.
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import select
-    from agentops.database import SessionLocal
-    from agentops.models import Organization
+    from agentguard.database import SessionLocal
+    from agentguard.models import Organization
     with SessionLocal() as db:
         org = db.scalar(select(Organization).where(Organization.slug == "default"))
         org.contained_until = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -121,8 +121,8 @@ def test_auto_resume_is_recorded_in_ledger(client, admin_headers):
                 json={"contained": True, "duration_minutes": 5})
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import select
-    from agentops.database import SessionLocal
-    from agentops.models import Organization
+    from agentguard.database import SessionLocal
+    from agentguard.models import Organization
     with SessionLocal() as db:
         org = db.scalar(select(Organization).where(Organization.slug == "default"))
         org.contained_until = datetime.now(timezone.utc) - timedelta(seconds=1)
@@ -138,8 +138,8 @@ def test_containment_sweeper_lifts_expired(client, admin_headers, db):
                 json={"contained": True, "duration_minutes": 10})
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import select
-    from agentops.containment import sweep_expired
-    from agentops.models import Organization
+    from agentguard.containment import sweep_expired
+    from agentguard.models import Organization
     org = db.scalar(select(Organization).where(Organization.slug == "default"))
     org.contained_until = datetime.now(timezone.utc) - timedelta(minutes=1)
     db.commit()

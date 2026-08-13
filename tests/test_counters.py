@@ -2,9 +2,9 @@
 
 import time
 
-from agentops.counters import DBRateBackend, RedisRateBackend, get_rate_backend
-from agentops.audit.ledger import AuditLedger
-from agentops.models import Decision
+from agentguard.counters import DBRateBackend, RedisRateBackend, get_rate_backend
+from agentguard.audit.ledger import AuditLedger
+from agentguard.models import Decision
 
 
 class FakeRedis:
@@ -49,8 +49,8 @@ def test_db_backend_counts_billable_only(db):
 
 
 def test_get_rate_backend_defaults_to_db(monkeypatch):
-    from agentops.config import get_settings
-    from agentops import counters
+    from agentguard.config import get_settings
+    from agentguard import counters
     monkeypatch.setattr(get_settings(), "rate_limit_backend", "db")
     counters.reset_rate_backend_cache()
     assert isinstance(get_rate_backend(), DBRateBackend)

@@ -7,7 +7,7 @@ a real parse tree.
 
 import pytest
 
-from agentops.sql_guard import analyze, check_column_access
+from agentguard.sql_guard import analyze, check_column_access
 
 
 def _ok(sql, dialect="postgres"):

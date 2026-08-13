@@ -13,8 +13,8 @@ import pytest
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from agentops import oidc
-from agentops.config import get_settings
+from agentguard import oidc
+from agentguard.config import get_settings
 
 
 def _b64url(b: bytes) -> str:
@@ -29,7 +29,7 @@ def _int_b64(i: int) -> str:
 def oidc_setup(monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "oidc_issuer", "https://idp.example")
-    monkeypatch.setattr(s, "oidc_client_id", "agentops-client")
+    monkeypatch.setattr(s, "oidc_client_id", "agentguard-client")
     monkeypatch.setattr(s, "oidc_client_secret", "shh")
     monkeypatch.setattr(s, "oidc_redirect_uri", "http://testserver/api/auth/oidc/callback")
 
@@ -57,7 +57,7 @@ def oidc_setup(monkeypatch):
 
 
 def _claims(**over):
-    base = {"iss": "https://idp.example", "aud": "agentops-client",
+    base = {"iss": "https://idp.example", "aud": "agentguard-client",
             "exp": int(time.time()) + 300, "email": "alice@corp.example"}
     base.update(over)
     return base
@@ -84,7 +84,7 @@ def test_login_redirects_to_idp(client, oidc_setup):
     loc = r.headers["location"]
     assert loc.startswith("https://idp.example/authorize")
     q = parse_qs(urlparse(loc).query)
-    assert q["client_id"] == ["agentops-client"]
+    assert q["client_id"] == ["agentguard-client"]
     assert q["response_type"] == ["code"]
     assert "state" in q
 
@@ -95,7 +95,7 @@ def test_full_sso_flow_provisions_user_and_issues_token(client, oidc_setup):
     data = r.json()
     assert data["user"]["email"] == "alice@corp.example"
     assert data["user"]["role"] == "viewer"          # least-privilege default
-    # The AgentOps session token actually works.
+    # The AgentGuard session token actually works.
     me = client.get("/api/auth/me",
                     headers={"Authorization": f"Bearer {data['access_token']}"})
     assert me.status_code == 200
@@ -153,7 +153,7 @@ def test_auto_provision_refuses_when_default_org_is_missing(client, oidc_setup, 
     its org-scoped resources -- a cross-tenant leak between two accounts that
     were never meant to be related at all.
     """
-    from agentops.models import Organization
+    from agentguard.models import Organization
 
     db.query(Organization).filter(Organization.slug == "default").delete()
     db.commit()
@@ -162,6 +162,6 @@ def test_auto_provision_refuses_when_default_org_is_missing(client, oidc_setup, 
     assert r.status_code == 500
     assert "default organization" in r.json()["detail"].lower()
 
-    from agentops.models import User
+    from agentguard.models import User
 
     assert db.query(User).filter(User.email == "new-user@corp.example").first() is None

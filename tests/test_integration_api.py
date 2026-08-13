@@ -44,7 +44,7 @@ def test_login_and_me(client, admin_headers):
 
 
 def test_agent_key_is_returned_once(setup):
-    assert setup["agent"]["api_key"].startswith("agentops_sk_")
+    assert setup["agent"]["api_key"].startswith("agentguard_sk_")
 
 
 def test_allow_decision(client, setup):

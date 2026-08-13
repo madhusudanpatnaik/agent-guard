@@ -1,8 +1,8 @@
 """Tests for LLM-security detectors and the DLP provider composition."""
 
-from agentops.config import get_settings
-from agentops.dlp import llm_guard
-from agentops.dlp.providers import scan_with_providers
+from agentguard.config import get_settings
+from agentguard.dlp import llm_guard
+from agentguard.dlp.providers import scan_with_providers
 
 
 # --- LLM-guard signatures ---------------------------------------------------
