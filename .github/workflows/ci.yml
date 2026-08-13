@@ -43,10 +43,16 @@ jobs:
         run: pytest -q
 
   # A product whose entire pitch is governance rigor should scan its own supply
-  # chain. This job hard-fails the build: verified locally against the current
-  # dependency set before wiring this in (`pip-audit --strict` -> "No known
-  # vulnerabilities found"), so starting strict doesn't break anything today —
-  # a future finding here is a real, new advisory worth blocking on.
+  # chain. Hard-fails the build; verified locally before wiring in.
+  #
+  # Audits the requirements FILE, not the installed environment. Auditing the
+  # environment pulls in our own package, which isn't on PyPI, and --strict
+  # turns "could not be audited" into a failure. That went unnoticed while the
+  # project was named agentops, because `agentops` IS on PyPI (a different
+  # company's package) — pip-audit was silently resolving our local package
+  # against THEIR advisory data and reporting a pass. The rename surfaced it.
+  # Auditing the declared dependency set is both what we actually want to check
+  # and immune to that whole class of confusion.
   dependency-audit:
     runs-on: ubuntu-latest
     steps:
@@ -55,9 +61,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt -e . pip-audit
+      - run: pip install pip-audit
       - name: Audit dependencies (pip-audit)
-        run: pip-audit --strict
+        run: pip-audit -r requirements.txt --strict
 
   docker:
     runs-on: ubuntu-latest
