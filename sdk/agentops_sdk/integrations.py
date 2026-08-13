@@ -41,6 +41,10 @@ def govern_tool_fn(
     Raises :class:`AuthorizationDenied` if the plane denies (or an approval is
     declined). The tool's keyword arguments are sent as the action payload so the
     DLP scanner can inspect them.
+
+    Advisory mode (built on :meth:`AgentOpsClient.guard`): ``fn`` still performs
+    the side effect, so this governs code that calls the wrapper — not ``fn``
+    itself if something else still has a direct reference to it.
     """
 
     def wrapper(**kwargs: Any) -> Any:
@@ -71,6 +75,12 @@ class GovernedToolRouter:
 
         # when the model asks to call a tool:
         result = router.dispatch(call.name, call.arguments)   # authorized first
+
+    Advisory mode under the hood (``dispatch`` calls
+    :meth:`AgentOpsClient.guard`): your own handler function still performs the
+    side effect, so this is a real audit trail and DLP scan for a model/agent
+    you trust to only call tools through this router, not a barrier against
+    code that calls ``issue_refund(...)`` directly instead of via ``dispatch``.
     """
 
     def __init__(self, ops: AgentOpsClient, *, wait_for_approval: bool = True):
@@ -158,6 +168,9 @@ def govern_langchain_tool(
     Duck-typed — LangChain is not imported here. It wraps the tool's underlying
     callable (``.func`` on ``Tool`` / ``StructuredTool``) in place and returns the
     same tool object, so it drops straight into an existing agent.
+
+    Advisory mode (built on :meth:`AgentOpsClient.guard`): the tool's own
+    function still performs the side effect once authorized.
     """
     name = getattr(tool, "name", getattr(tool, "__name__", "tool"))
     action_type = action_type or f"tool.{name}"

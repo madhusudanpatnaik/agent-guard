@@ -197,6 +197,10 @@ router.register("issue_refund", issue_refund,
 result = router.dispatch(call.name, call.arguments)   # authorized first; raises if denied
 ```
 
+Advisory mode under the hood (`dispatch` calls `guard()`): your handler still
+performs the side effect, so this governs a model that only calls tools
+*through the router* — not code that could call `issue_refund(...)` directly.
+
 LangChain tools wrap in one line with `govern_langchain_tool(ops, tool)`; any
 plain function with `govern_tool_fn(ops, fn, action_type=..., resource=...)`.
 
