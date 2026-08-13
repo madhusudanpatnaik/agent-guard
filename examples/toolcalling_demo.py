@@ -1,9 +1,15 @@
-"""AgentOps — governed tool-calling demo.
+"""AgentOps — governed tool-calling demo (advisory mode).
 
 Shows how a few lines make an existing tool-calling agent governed. The
 ``GovernedToolRouter`` sits between the model's tool calls and your handlers —
 it works with OpenAI function calling, Anthropic tool use, and MCP tool servers,
 which all produce the same ``(tool_name, arguments)`` shape.
+
+Advisory mode: your handler functions still perform the real side effect: this
+governs a model that only calls tools through the router, not code that could
+call ``issue_refund(...)`` directly. For an agent you don't fully trust to
+route every call through this router, prefer enforced mode or the proxy — see
+enforcing_demo.py / proxy_demo.py.
 
 Here we simulate the tool calls a model would emit; each is authorized against
 the control plane BEFORE the handler runs. Run it (after `make seed` and

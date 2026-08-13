@@ -1,4 +1,11 @@
-"""End-to-end demo: an autonomous agent that clears every action with AgentOps.
+"""ADVISORY-mode demo: an autonomous agent that clears every action with AgentOps.
+
+This is the weaker of the two SDK modes: the agent below still performs each
+action itself and is trusted to honor the decision. It's real for an agent
+that cooperates — nothing here would stop this same agent from skipping
+``ops.guard()`` and just doing the action anyway. For an agent you don't fully
+trust, see enforcing_demo.py (the plane holds the credential instead) or
+proxy_demo.py (governs the agent's raw HTTP with zero SDK code, no opt-out).
 
 Prereqs::
 

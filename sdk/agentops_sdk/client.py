@@ -1,19 +1,29 @@
 """Client SDK for the AgentOps control plane.
 
-Typical usage inside an autonomous agent::
+Two different guarantees live behind a similar-looking API — pick deliberately:
 
-    from agentops_sdk import AgentOpsClient, AuthorizationDenied
+**Enforced mode** — the plane holds the upstream credential and makes the call
+itself; the agent physically cannot reach the upstream except through it::
+
+    from agentops_sdk import AgentOpsClient
 
     ops = AgentOpsClient("http://localhost:8080", api_key="agentops_sk_...")
+    customer = ops.call("crm", "GET", "/customers/1042")   # plane injects the credential
 
-    # Ask permission BEFORE doing the thing.
+**Advisory mode** (``guard()`` / ``@governed``) — the agent still holds its own
+credentials and performs the side effect itself; AgentOps only sees the action
+if the agent's own code chooses to ask first. This is a real audit trail and
+DLP scan for an agent you already trust to cooperate — it is not a security
+boundary against one you don't, since nothing stops that agent from simply not
+calling ``guard()`` at all::
+
     with ops.guard("payment.refund", "payment:stripe:refund", metadata={"amount": 250}):
         stripe.Refund.create(...)   # only runs if allowed (or approved)
 
-Or wrap a tool/function so every call is governed automatically::
-
-    @governed(ops, action_type="db.write", resource_arg="table")
-    def write_row(table: str, row: dict): ...
+For an agent you don't fully trust and can't modify, prefer the transparent
+forward proxy (``agentops proxy``) instead of either — it requires no agent
+code and the agent has no way to opt out. See the README's "How your agents
+integrate" section for the full comparison.
 """
 
 from __future__ import annotations
@@ -299,6 +309,13 @@ class AgentOpsClient:
         * ``require_approval`` -> optionally block until a human resolves it; runs
                                   only if approved, otherwise raises.
         * ``deny``             -> raises :class:`AuthorizationDenied`.
+
+        Advisory mode: the body still runs with whatever credentials your own
+        code already holds. This is real for an agent that cooperates — it is
+        not a barrier against one that doesn't, since nothing stops the caller
+        from performing the side effect without ever entering this block. For
+        an agent you don't fully trust, use enforced mode (``execute``/``call``/
+        ``query``/``sql``/``write``/``publish``) or the transparent proxy instead.
         """
         result = self.authorize(action_type, resource, payload, metadata)
 
@@ -335,6 +352,10 @@ def governed(
 
     ``resource`` is a static resource string; alternatively ``resource_arg``
     names a keyword argument whose value becomes the resource.
+
+    Built on :meth:`AgentOpsClient.guard` — advisory mode, not a security
+    boundary. See that method's docstring before using this on an agent you
+    don't fully trust to actually be calling the decorated function.
     """
 
     def decorator(func: Callable) -> Callable:
