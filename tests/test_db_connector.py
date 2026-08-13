@@ -110,7 +110,7 @@ def test_read_path_enforces_db_level_read_only(warehouse_dsn):
     # the read-only transaction (this is what stops Postgres SELECT..INTO / CTE writes).
     import sqlalchemy.exc
 
-    from agentops.db_connector import _run_query
+    from agentguard.db_connector import _run_query
     cols, rows = _run_query(warehouse_dsn, "SELECT COUNT(*) AS n FROM customers", {})
     assert rows[0]["n"] == 2
     with pytest.raises(sqlalchemy.exc.SQLAlchemyError):

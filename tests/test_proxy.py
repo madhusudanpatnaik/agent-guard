@@ -48,7 +48,7 @@ def origin():
 
 @pytest.fixture
 def proxy_port():
-    from agentops.proxy import serve_proxy
+    from agentguard.proxy import serve_proxy
     port = _free_port()
     threading.Thread(target=lambda: serve_proxy("127.0.0.1", port), daemon=True).start()
     for _ in range(50):
@@ -88,7 +88,7 @@ def test_policy_denied_request_is_blocked(client, admin_headers, origin, proxy_p
     with _proxied_client(key, proxy_port) as c:
         r = c.get(f"http://127.0.0.1:{origin}/data")
     assert r.status_code == 403
-    assert r.json()["agentops"] == "blocked"   # origin never reached
+    assert r.json()["agentguard"] == "blocked"   # origin never reached
 
 
 def test_dlp_blocks_exfiltration_through_proxy(client, admin_headers, origin, proxy_port):
@@ -181,14 +181,14 @@ def tls_origin(tmp_path):
 
 def test_https_body_is_inspected_and_governed(client, admin_headers, tls_origin, proxy_port,
                                               monkeypatch):
-    import agentops.proxy as proxymod
-    from agentops.config import get_settings
+    import agentguard.proxy as proxymod
+    from agentguard.config import get_settings
     # The demo origin is self-signed, so don't verify it (production verifies).
     monkeypatch.setattr(get_settings(), "proxy_verify_upstream_tls", False)
 
     key = _agent_with_policy(client, admin_headers, "https:127.0.0.1**",
                              ["http.connect", "http.get", "http.post"])
-    ca_ctx = ssl.create_default_context(cafile=str(proxymod._CA.cert_path))  # trust AgentOps CA
+    ca_ctx = ssl.create_default_context(cafile=str(proxymod._CA.cert_path))  # trust AgentGuard CA
     with httpx.Client(proxy=f"http://agent:{key}@127.0.0.1:{proxy_port}",
                       verify=ca_ctx, timeout=15) as c:
         # Allowed HTTPS GET is decrypted, governed, and forwarded.

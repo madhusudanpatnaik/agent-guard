@@ -57,7 +57,7 @@ def ws_upstream():
 
 @pytest.fixture
 def proxy_port():
-    from agentops.proxy import serve_proxy
+    from agentguard.proxy import serve_proxy
     port = _free_port()
     threading.Thread(target=lambda: serve_proxy("127.0.0.1", port), daemon=True).start()
     for _ in range(50):
@@ -97,7 +97,7 @@ def test_websocket_tunnels_do_not_hold_database_connections(
     client, admin_headers, ws_upstream, proxy_port
 ):
     """Long-lived tunnels must release their DB session before pumping bytes."""
-    from agentops.database import engine
+    from agentguard.database import engine
 
     key = _ws_agent(client, admin_headers)
     tunnels = [_open_tunnel(key, proxy_port, ws_upstream) for _ in range(8)]
@@ -135,10 +135,10 @@ def test_suspended_agent_is_refused_on_a_reused_proxy_client(
 
     import httpx
 
-    import agentops.proxy as proxymod
-    from agentops.config import get_settings
-    from agentops.database import SessionLocal
-    from agentops.models import Agent, AgentStatus
+    import agentguard.proxy as proxymod
+    from agentguard.config import get_settings
+    from agentguard.database import SessionLocal
+    from agentguard.models import Agent, AgentStatus
     from tests.test_proxy import _agent_with_policy, _self_signed
 
     monkeypatch.setattr(get_settings(), "proxy_verify_upstream_tls", False)

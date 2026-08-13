@@ -18,8 +18,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from agentops.config import get_settings
-from agentops.dlp import providers
+from agentguard.config import get_settings
+from agentguard.dlp import providers
 
 
 @dataclass
@@ -103,7 +103,7 @@ def test_analyzer_failure_does_not_abort_the_whole_scan(monkeypatch, ml_settings
 
 def test_bounded_pass_is_logged_not_silent(stub, caplog):
     """A partial scan reported as a clean scan is how coverage gaps hide."""
-    with caplog.at_level("WARNING", logger="agentops.dlp.providers"):
+    with caplog.at_level("WARNING", logger="agentguard.dlp.providers"):
         providers._presidio_findings({f"k{i}": f"value {i}" for i in range(50)})
     assert any("ML DLP pass was bounded" in r.message for r in caplog.records)
 

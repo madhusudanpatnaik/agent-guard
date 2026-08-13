@@ -26,11 +26,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "sdk"))
 
 import httpx  # noqa: E402
 
-from agentops_sdk import AgentOpsClient  # noqa: E402
+from agentguard_sdk import AgentGuardClient  # noqa: E402
 
-URL = os.environ.get("AGENTOPS_URL", "http://localhost:8080")
-ADMIN_EMAIL = os.environ.get("AGENTOPS_ADMIN_EMAIL", "admin@agentops.local")
-ADMIN_PASSWORD = os.environ.get("AGENTOPS_ADMIN_PASSWORD", "admin")
+URL = os.environ.get("AGENTGUARD_URL", "http://localhost:8080")
+ADMIN_EMAIL = os.environ.get("AGENTGUARD_ADMIN_EMAIL", "admin@agentguard.local")
+ADMIN_PASSWORD = os.environ.get("AGENTGUARD_ADMIN_PASSWORD", "admin")
 UPSTREAM = "http://127.0.0.1:9100"
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -62,7 +62,7 @@ def _admin_headers(http: httpx.Client) -> dict:
     except httpx.HTTPError:
         _die(f"Could not reach the plane at {URL}. Is `make serve` running?")
     if r.status_code != 200:
-        _die("Admin login failed. Set AGENTOPS_ADMIN_PASSWORD if you changed it.")
+        _die("Admin login failed. Set AGENTGUARD_ADMIN_PASSWORD if you changed it.")
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
@@ -70,7 +70,7 @@ def _provision_agent(http: httpx.Client, headers: dict, role_name: str) -> str:
     roles = http.get("/api/roles", headers=headers).json()
     role = next((x for x in roles if x["name"] == role_name), None)
     if not role:
-        _die(f"Role '{role_name}' not found. Run `make seed` (or `agentops seed`) first.")
+        _die(f"Role '{role_name}' not found. Run `make seed` (or `agentguard seed`) first.")
     connectors = {c["name"] for c in http.get("/api/connectors", headers=headers).json()}
     if not {"crm", "payments"} <= connectors:
         _die("Connectors 'crm'/'payments' not found. Run `make seed` first.")
@@ -87,8 +87,8 @@ def main() -> int:
 
     upstream = _start_upstream()
     try:
-        support = AgentOpsClient(URL, api_key=support_key)
-        billing = AgentOpsClient(URL, api_key=billing_key)
+        support = AgentGuardClient(URL, api_key=support_key)
+        billing = AgentGuardClient(URL, api_key=billing_key)
 
         print("1) SupportBot reads customer 1042 THROUGH the plane (enforced):")
         r = support.execute("crm", "GET", "/customers/1042")

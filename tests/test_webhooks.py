@@ -13,8 +13,8 @@ import time
 
 import httpx
 
-from agentops.config import get_settings
-from agentops.webhooks import flush_pending_webhooks, post_json, sign_body, verify_signature
+from agentguard.config import get_settings
+from agentguard.webhooks import flush_pending_webhooks, post_json, sign_body, verify_signature
 
 
 def test_sign_and_verify_roundtrip():
@@ -32,7 +32,7 @@ def test_post_json_unsigned_when_no_secret(monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda url, **kw: captured.update(kw) or None)
     post_json("http://x/hook", {"k": "v"})
     assert flush_pending_webhooks()
-    assert "X-AgentOps-Signature" not in captured["headers"]
+    assert "X-AgentGuard-Signature" not in captured["headers"]
     assert json.loads(captured["content"]) == {"k": "v"}
 
 
@@ -42,7 +42,7 @@ def test_post_json_signed_when_secret_set(monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda url, **kw: captured.update(kw) or None)
     post_json("http://x/hook", {"k": "v"})
     assert flush_pending_webhooks()
-    sig = captured["headers"]["X-AgentOps-Signature"]
+    sig = captured["headers"]["X-AgentGuard-Signature"]
     assert verify_signature(captured["content"], sig, "s3cr3t")
 
 

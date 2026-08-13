@@ -1,11 +1,11 @@
 """Tests for adaptive risk scoring, behavioral anomaly detection, and step-up."""
 
-from agentops import anomaly, risk
-from agentops.audit.ledger import AuditLedger
-from agentops.config import get_settings
-from agentops.dlp.scanner import scan_payload
-from agentops.models import Agent, Decision, Effect, Policy, Role
-from agentops.policy.engine import ActionRequest, PolicyDecision
+from agentguard import anomaly, risk
+from agentguard.audit.ledger import AuditLedger
+from agentguard.config import get_settings
+from agentguard.dlp.scanner import scan_payload
+from agentguard.models import Agent, Decision, Effect, Policy, Role
+from agentguard.policy.engine import ActionRequest, PolicyDecision
 
 
 def _agent(db, quota=10000):
@@ -43,7 +43,7 @@ def _insert_at(db, agent_id, seconds_ago, n=1):
     """Insert n billable audit rows created `seconds_ago` in the past."""
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import func, select
-    from agentops.models import AuditRecord
+    from agentguard.models import AuditRecord
     ts = datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)
     max_seq = db.scalar(select(func.max(AuditRecord.seq)))  # 0 is falsy — check None explicitly
     next_seq = 0 if max_seq is None else max_seq + 1
@@ -261,7 +261,7 @@ def test_walking_ids_in_a_known_family_is_not_repeatedly_novel(db):
 
 
 def test_resource_family_generalization():
-    from agentops.utils import resource_family
+    from agentguard.utils import resource_family
     assert resource_family("db:customers:1042") == "db:customers:*"
     assert resource_family("http:crm/orders/98") == "http:crm/orders/*"
     assert resource_family("db:customers:*") == "db:customers:*"   # already a family
@@ -282,7 +282,7 @@ def test_loop_detection_flags_stuck_agent(db):
 
 def test_flat_baseline_small_uptick_is_not_a_surge():
     """A steady low-volume agent must not trip a surge on a mild increase."""
-    from agentops.anomaly import _zscore_from_buckets as z
+    from agentguard.anomaly import _zscore_from_buckets as z
     assert z([2] + [1] * 12) == 0.0     # 1 -> 2 actions is not an anomaly
     assert z([3] + [1] * 12) == 0.0
     # A genuine multiple-and-magnitude jump is still caught.
@@ -292,5 +292,5 @@ def test_flat_baseline_small_uptick_is_not_a_surge():
 
 def test_idle_or_batch_agent_has_no_surge_signal():
     """An agent with no recent baseline (e.g. a daily batch) isn't flagged."""
-    from agentops.anomaly import _zscore_from_buckets as z
+    from agentguard.anomaly import _zscore_from_buckets as z
     assert z([40] + [0] * 12) == 0.0

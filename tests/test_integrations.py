@@ -5,9 +5,9 @@ from contextlib import contextmanager
 import pytest
 from fastapi.testclient import TestClient
 
-from agentops.main import app
-from agentops_sdk import (
-    AgentOpsClient,
+from agentguard.main import app
+from agentguard_sdk import (
+    AgentGuardClient,
     AuthorizationDenied,
     DecisionResult,
     GovernedToolRouter,
@@ -134,7 +134,7 @@ def test_router_through_live_plane(client, admin_headers):
 
     authed = TestClient(app)
     authed.headers.update({"X-API-Key": agent["api_key"]})
-    ops = AgentOpsClient("http://testserver", api_key=agent["api_key"], client=authed)
+    ops = AgentGuardClient("http://testserver", api_key=agent["api_key"], client=authed)
 
     router = GovernedToolRouter(ops)
     ran: list[str] = []

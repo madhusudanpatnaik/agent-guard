@@ -12,11 +12,11 @@ derives every behavioral signal from one bounded window fetch.
 
 from sqlalchemy import event, select
 
-from agentops.config import get_settings
-from agentops.database import engine
-from agentops.gateway_service import authorize_action, invalidate_detector_cache
-from agentops.models import Agent, Effect, Organization, Policy, Role
-from agentops.policy.engine import ActionRequest
+from agentguard.config import get_settings
+from agentguard.database import engine
+from agentguard.gateway_service import authorize_action, invalidate_detector_cache
+from agentguard.models import Agent, Effect, Organization, Policy, Role
+from agentguard.policy.engine import ActionRequest
 
 # Ceilings, not targets — a small margin above measured cost so unrelated
 # refactors don't fail the build, but a re-introduced N+1 does.
@@ -101,7 +101,7 @@ def test_query_count_does_not_grow_with_history(db):
 
 def test_detector_cache_avoids_per_request_lookup(db):
     """The custom-detector read must be cached, not paid on every request."""
-    from agentops.models import Detector
+    from agentguard.models import Detector
     org = db.scalar(select(Organization))
     db.add(Detector(org_id=org.id if org else None, name="perf_det",
                     pattern=r"ACME-\d+", severity="high", enabled=True))

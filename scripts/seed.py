@@ -1,8 +1,8 @@
-"""Thin CLI wrapper around :func:`agentops.seeds.seed`."""
+"""Thin CLI wrapper around :func:`agentguard.seeds.seed`."""
 
 from __future__ import annotations
 
-from agentops.seeds import seed
+from agentguard.seeds import seed
 
 
 def main() -> None:
@@ -12,7 +12,7 @@ def main() -> None:
         for name, key in keys.items():
             print(f"  {name:18} {key}")
     else:
-        print("No new agents created (already seeded). Use --reset via `agentops seed --reset`.")
+        print("No new agents created (already seeded). Use --reset via `agentguard seed --reset`.")
 
 
 if __name__ == "__main__":

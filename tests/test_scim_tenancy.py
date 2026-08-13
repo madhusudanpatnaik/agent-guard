@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import pytest
 
-from agentops.config import get_settings
-from agentops.database import SessionLocal
-from agentops.models import User
+from agentguard.config import get_settings
+from agentguard.database import SessionLocal
+from agentguard.models import User
 from tests.test_tenancy import org_a, org_b  # noqa: F401 - reused fixtures
 
 _TOKEN = "scim-secret-token"
@@ -90,7 +90,7 @@ def test_scim_created_user_lands_in_the_tokens_own_org(client, scim):
     with SessionLocal() as db:
         created = db.query(User).filter(User.email == "new@corp.example").one()
         default_org_id = db.query(User).filter(
-            User.email == "admin@agentops.local").one().org_id
+            User.email == "admin@agentguard.local").one().org_id
         assert created.org_id == default_org_id
 
 
@@ -98,7 +98,7 @@ def test_scim_token_comparison_is_constant_time(monkeypatch):
     """Regression for the plain `!=` comparison that skipped hmac.compare_digest."""
     import inspect
 
-    from agentops.routers import scim as scim_mod
+    from agentguard.routers import scim as scim_mod
 
     source = inspect.getsource(scim_mod.require_scim_auth)
     assert "hmac.compare_digest" in source

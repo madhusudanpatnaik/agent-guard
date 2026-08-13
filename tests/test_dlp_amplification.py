@@ -12,8 +12,8 @@ Two measured problems, both cheap for a caller to trigger:
 
 from __future__ import annotations
 
-from agentops.dlp import llm_guard
-from agentops.dlp.scanner import _MAX_LEDGER_FINDINGS, DLPFinding, DLPResult, scan_payload
+from agentguard.dlp import llm_guard
+from agentguard.dlp.scanner import _MAX_LEDGER_FINDINGS, DLPFinding, DLPResult, scan_payload
 
 # One example per signature. Also acts as the completeness check below: if a
 # signature is added without an example here, test_corpus_covers_every_signature

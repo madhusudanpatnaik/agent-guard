@@ -1,4 +1,4 @@
-"""AgentOps — client pitch demo.
+"""AgentGuard — client pitch demo.
 
 A narrated, end-to-end walkthrough you can run live in front of a buyer. It uses
 the REAL control plane (no mocked decisions) to show, for a fictional bank
@@ -33,11 +33,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "sdk"))
 
 import httpx  # noqa: E402
 
-from agentops_sdk import AgentOpsClient  # noqa: E402
+from agentguard_sdk import AgentGuardClient  # noqa: E402
 
-URL = os.environ.get("AGENTOPS_URL", "http://localhost:8080")
-ADMIN_EMAIL = os.environ.get("AGENTOPS_ADMIN_EMAIL", "admin@agentops.local")
-ADMIN_PASSWORD = os.environ.get("AGENTOPS_ADMIN_PASSWORD", "admin")
+URL = os.environ.get("AGENTGUARD_URL", "http://localhost:8080")
+ADMIN_EMAIL = os.environ.get("AGENTGUARD_ADMIN_EMAIL", "admin@agentguard.local")
+ADMIN_PASSWORD = os.environ.get("AGENTGUARD_ADMIN_PASSWORD", "admin")
 UPSTREAM = "http://127.0.0.1:9100"
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
@@ -87,7 +87,7 @@ def _admin(http: httpx.Client) -> dict:
     except httpx.HTTPError:
         _die(f"Could not reach the control plane at {URL}. Is `make serve` running?")
     if r.status_code != 200:
-        _die("Admin login failed. Set AGENTOPS_ADMIN_PASSWORD if you changed it.")
+        _die("Admin login failed. Set AGENTGUARD_ADMIN_PASSWORD if you changed it.")
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
@@ -95,7 +95,7 @@ def _provision(http: httpx.Client, headers: dict, role_name: str, label: str) ->
     role = next((x for x in http.get("/api/roles", headers=headers).json()
                  if x["name"] == role_name), None)
     if not role:
-        _die(f"Role '{role_name}' not found. Run `make seed` (or `agentops seed`) first.")
+        _die(f"Role '{role_name}' not found. Run `make seed` (or `agentguard seed`) first.")
     connectors = {c["name"] for c in http.get("/api/connectors", headers=headers).json()}
     if not {"crm", "payments"} <= connectors:
         _die("Demo connectors 'crm'/'payments' not found. Run `make seed` first.")
@@ -105,7 +105,7 @@ def _provision(http: httpx.Client, headers: dict, role_name: str, label: str) ->
 
 
 def main() -> int:
-    print(f"{BOLD}AgentOps — governance for autonomous AI agents{RESET}")
+    print(f"{BOLD}AgentGuard — governance for autonomous AI agents{RESET}")
     print(f"{DIM}Scenario: Northwind Financial deploys two AI agents into production.{RESET}")
 
     with httpx.Client(base_url=URL, timeout=10) as http:
@@ -116,8 +116,8 @@ def main() -> int:
 
         upstream = _start_upstream()
         try:
-            support = AgentOpsClient(URL, api_key=support_key)
-            billing = AgentOpsClient(URL, api_key=billing_key)
+            support = AgentGuardClient(URL, api_key=support_key)
+            billing = AgentGuardClient(URL, api_key=billing_key)
 
             # ---- Support agent -------------------------------------------------
             _rule("AI SUPPORT AGENT  ·  role: customer-support (read-only)")
@@ -175,7 +175,7 @@ def main() -> int:
             # ---- Analytics agent (governed SQL) --------------------------------
             _rule("AI ANALYTICS AGENT  ·  role: data-analyst (read-only SQL)")
 
-            analyst = AgentOpsClient(URL, api_key=analyst_key)
+            analyst = AgentGuardClient(URL, api_key=analyst_key)
             _step(8, "AnalyticsGPT queries the data warehouse for top VIP customers")
             q = analyst.query(
                 "warehouse",
@@ -219,7 +219,7 @@ def main() -> int:
    …while {GREEN}allowing{RESET} safe automation to run straight through, and recording
    {BOLD}everything{RESET} in tamper-evident, exportable audit evidence.
 
-  {BOLD}AgentOps is the firewall + identity layer every enterprise needs before it
+  {BOLD}AgentGuard is the firewall + identity layer every enterprise needs before it
   lets AI agents touch production.{RESET}
 """)
             return 0

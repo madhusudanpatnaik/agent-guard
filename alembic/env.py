@@ -1,6 +1,6 @@
-"""Alembic environment configuration for AgentOps.
+"""Alembic environment configuration for AgentGuard.
 
-Reads the database URL from the AgentOps config so that migration commands
+Reads the database URL from the AgentGuard config so that migration commands
 automatically use the correct database without duplicating the connection string.
 """
 
@@ -9,13 +9,13 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from agentops.config import get_settings
-from agentops.database import Base
+from agentguard.config import get_settings
+from agentguard.database import Base
 
 # Alembic Config object.
 config = context.config
 
-# Override sqlalchemy.url from the AgentOps config.
+# Override sqlalchemy.url from the AgentGuard config.
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 # Interpret the config file for Python logging.
@@ -23,7 +23,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import all models so they register on Base.metadata.
-from agentops import models  # noqa: F401, E402
+from agentguard import models  # noqa: F401, E402
 
 target_metadata = Base.metadata
 

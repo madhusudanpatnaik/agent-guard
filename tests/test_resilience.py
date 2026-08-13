@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from agentops.resilience import (
+from agentguard.resilience import (
     CircuitBreaker,
     CircuitState,
     UpstreamUnavailable,
@@ -129,8 +129,8 @@ def test_success_resets_failure_count():
 # --- end-to-end through enforced execution ---------------------------------
 
 def test_enforced_execution_retries_transient_failure(client, admin_headers, monkeypatch):
-    from agentops import gateway_service
-    from agentops.config import get_settings
+    from agentguard import gateway_service
+    from agentguard.config import get_settings
 
     monkeypatch.setattr(get_settings(), "upstream_retry_backoff", 0.0)  # no real sleep
     attempts = {"n": 0}

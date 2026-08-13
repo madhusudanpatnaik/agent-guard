@@ -21,7 +21,7 @@ def test_create_records_version_1(client, admin_headers):
     assert len(vers) == 1
     assert vers[0]["version"] == 1
     assert vers[0]["action"] == "create"
-    assert vers[0]["changed_by"] == "admin@agentops.local"
+    assert vers[0]["changed_by"] == "admin@agentguard.local"
     assert vers[0]["snapshot"]["resource"] == "db:a"
 
 
@@ -110,8 +110,8 @@ def test_history_is_tenant_scoped(client, admin_headers):
 
 def test_concurrent_version_allocation_is_unique(db):
     """Two version records for the same policy can't collide on version number."""
-    from agentops.models import Policy, PolicyVersion, Role
-    from agentops.policy import history
+    from agentguard.models import Policy, PolicyVersion, Role
+    from agentguard.policy import history
     from sqlalchemy import select
     role = Role(name="cc")
     db.add(role)

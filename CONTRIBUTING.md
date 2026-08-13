@@ -31,8 +31,8 @@ Individually:
 
 | Command | What it runs |
 |---|---|
-| `make lint` | `ruff check agentops sdk examples tests scripts` |
-| `make typecheck` | `mypy agentops --ignore-missing-imports` |
+| `make lint` | `ruff check agentguard sdk examples tests scripts` |
+| `make typecheck` | `mypy agentguard --ignore-missing-imports` |
 | `make test` | pytest |
 | `make cover` | pytest with coverage |
 | `make verify` | full verification pass |
@@ -74,13 +74,13 @@ Open an issue using the bug report template. A reproduction — even a rough one
 
 | Path | Contents |
 |---|---|
-| `agentops/` | Control-plane package (policy, DLP, credentials, ledger) |
+| `agentguard/` | Control-plane package (policy, DLP, credentials, ledger) |
 | `sdk/` | Client SDK |
 | `examples/` | Runnable usage examples |
 | `tests/` | Test suite |
 | `alembic/` | Database migrations |
 | `scripts/` | Operational scripts |
 
-> **Note:** the Python package is `agentops/` while the repository is
+> **Note:** the Python package is `agentguard/` while the repository is
 > `agent-guard`. The package name is kept for import stability; renaming it
 > would break every existing import.

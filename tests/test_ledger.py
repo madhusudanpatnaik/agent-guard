@@ -1,6 +1,6 @@
 """Unit tests for the tamper-evident audit ledger."""
 
-from agentops.audit.ledger import (
+from agentguard.audit.ledger import (
     AuditLedger,
     _cache_get,
     _cache_set,
@@ -8,7 +8,7 @@ from agentops.audit.ledger import (
     reset_chain_cache,
     verify_chain,
 )
-from agentops.models import Decision
+from agentguard.models import Decision
 
 
 def _append(ledger, i, decision=Decision.ALLOW):
@@ -54,7 +54,7 @@ def test_tampering_a_row_breaks_the_chain(db):
         _append(ledger, i)
 
     # Simulate a malicious after-the-fact edit of a historic row's content.
-    from agentops.models import AuditRecord
+    from agentguard.models import AuditRecord
 
     victim = db.query(AuditRecord).filter(AuditRecord.seq == 2).one()
     victim.reason = "tampered — this action was actually denied"
@@ -70,7 +70,7 @@ def test_deleting_a_row_breaks_sequence(db):
     for i in range(4):
         _append(ledger, i)
 
-    from agentops.models import AuditRecord
+    from agentguard.models import AuditRecord
 
     db.query(AuditRecord).filter(AuditRecord.seq == 1).delete()
     db.commit()
@@ -150,7 +150,7 @@ def test_chain_status_shorter_chain_triggers_full_verify(db):
         _append(ledger, i)
     verify_chain(db)  # cache at length 4
 
-    from agentops.models import AuditRecord
+    from agentguard.models import AuditRecord
 
     db.query(AuditRecord).filter(AuditRecord.seq >= 2).delete()
     db.commit()

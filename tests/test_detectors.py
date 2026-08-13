@@ -1,6 +1,6 @@
 """Tests for operator-defined custom DLP detectors."""
 
-from agentops.dlp.scanner import scan_payload_custom
+from agentguard.dlp.scanner import scan_payload_custom
 
 
 # --- scanner-level ----------------------------------------------------------

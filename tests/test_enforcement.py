@@ -12,7 +12,7 @@ import json
 import httpx
 import pytest
 
-from agentops import gateway_service
+from agentguard import gateway_service
 
 UPSTREAM_KEY = "upstream-test-key-123"
 
@@ -149,8 +149,8 @@ def test_over_threshold_requires_approval_then_executes(client, enforced, mock_u
 def test_approval_claim_is_atomic_single_use(db):
     # The atomic compare-and-swap consumes an approval exactly once — the race-safe
     # primitive behind single-use approvals.
-    from agentops.gateway_service import _claim_approval
-    from agentops.models import Agent, Approval, ApprovalStatus, Role
+    from agentguard.gateway_service import _claim_approval
+    from agentguard.models import Agent, Approval, ApprovalStatus, Role
     role = Role(name="r")
     db.add(role)
     db.flush()

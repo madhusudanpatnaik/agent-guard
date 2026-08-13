@@ -1,4 +1,4 @@
-"""ADVISORY-mode demo: an autonomous agent that clears every action with AgentOps.
+"""ADVISORY-mode demo: an autonomous agent that clears every action with AgentGuard.
 
 This is the weaker of the two SDK modes: the agent below still performs each
 action itself and is trusted to honor the decision. It's real for an agent
@@ -9,12 +9,12 @@ proxy_demo.py (governs the agent's raw HTTP with zero SDK code, no opt-out).
 
 Prereqs::
 
-    agentops serve            # in one terminal
-    agentops seed             # prints agent API keys
+    agentguard serve            # in one terminal
+    agentguard seed             # prints agent API keys
 
 Then::
 
-    AGENTOPS_API_KEY=agentops_sk_...  python examples/demo_agent.py
+    AGENTGUARD_API_KEY=agentguard_sk_...  python examples/demo_agent.py
 """
 
 from __future__ import annotations
@@ -25,13 +25,13 @@ import sys
 # Make the local SDK importable when running from a source checkout.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "sdk"))
 
-from agentops_sdk import AgentOpsClient, AuthorizationDenied  # noqa: E402
+from agentguard_sdk import AgentGuardClient, AuthorizationDenied  # noqa: E402
 
-BASE_URL = os.environ.get("AGENTOPS_URL", "http://localhost:8080")
-API_KEY = os.environ.get("AGENTOPS_API_KEY")
+BASE_URL = os.environ.get("AGENTGUARD_URL", "http://localhost:8080")
+API_KEY = os.environ.get("AGENTGUARD_API_KEY")
 
 
-def try_action(ops: AgentOpsClient, label: str, **kw) -> None:
+def try_action(ops: AgentGuardClient, label: str, **kw) -> None:
     try:
         with ops.guard(wait_for_approval=False, **kw) as decision:
             print(f"  ✅ {label}: ALLOWED — {decision.reason}")
@@ -46,10 +46,10 @@ def try_action(ops: AgentOpsClient, label: str, **kw) -> None:
 
 def main() -> int:
     if not API_KEY:
-        print("Set AGENTOPS_API_KEY (from `agentops seed`).")
+        print("Set AGENTGUARD_API_KEY (from `agentguard seed`).")
         return 1
 
-    ops = AgentOpsClient(BASE_URL, api_key=API_KEY)
+    ops = AgentGuardClient(BASE_URL, api_key=API_KEY)
     print(f"Authenticated as: {ops.whoami()}\n")
 
     print("Attempting a spread of actions:")

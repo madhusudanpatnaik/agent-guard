@@ -1,4 +1,4 @@
-"""AgentOps — governed tool-calling demo (advisory mode).
+"""AgentGuard — governed tool-calling demo (advisory mode).
 
 Shows how a few lines make an existing tool-calling agent governed. The
 ``GovernedToolRouter`` sits between the model's tool calls and your handlers —
@@ -27,11 +27,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "sdk"))
 
 import httpx  # noqa: E402
 
-from agentops_sdk import AgentOpsClient, AuthorizationDenied, GovernedToolRouter  # noqa: E402
+from agentguard_sdk import AgentGuardClient, AuthorizationDenied, GovernedToolRouter  # noqa: E402
 
-URL = os.environ.get("AGENTOPS_URL", "http://localhost:8080")
-ADMIN_EMAIL = os.environ.get("AGENTOPS_ADMIN_EMAIL", "admin@agentops.local")
-ADMIN_PASSWORD = os.environ.get("AGENTOPS_ADMIN_PASSWORD", "admin")
+URL = os.environ.get("AGENTGUARD_URL", "http://localhost:8080")
+ADMIN_EMAIL = os.environ.get("AGENTGUARD_ADMIN_EMAIL", "admin@agentguard.local")
+ADMIN_PASSWORD = os.environ.get("AGENTGUARD_ADMIN_PASSWORD", "admin")
 
 
 def _die(msg: str) -> None:
@@ -46,7 +46,7 @@ def _provision_assistant(http: httpx.Client) -> str:
     except httpx.HTTPError:
         _die(f"Could not reach the plane at {URL}. Is `make serve` running?")
     if r.status_code != 200:
-        _die("Admin login failed. Set AGENTOPS_ADMIN_PASSWORD if you changed it.")
+        _die("Admin login failed. Set AGENTGUARD_ADMIN_PASSWORD if you changed it.")
     headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
     # Idempotent: reuse the demo role if it already exists (so re-runs don't 409).
@@ -91,7 +91,7 @@ def main() -> int:
     with httpx.Client(base_url=URL, timeout=10) as http:
         api_key = _provision_assistant(http)
 
-    ops = AgentOpsClient(URL, api_key=api_key)
+    ops = AgentGuardClient(URL, api_key=api_key)
     # wait_for_approval=False so an approval-required call is reported, not blocking.
     router = GovernedToolRouter(ops, wait_for_approval=False)
     router.register("get_weather", get_weather,

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from agentops.database import SessionLocal
-from agentops.models import Approval, ApprovalStatus, User
+from agentguard.database import SessionLocal
+from agentguard.models import Approval, ApprovalStatus, User
 
 
 def _agent_id(admin_headers, client) -> int:
@@ -35,7 +35,7 @@ def _seed_approvals(agent_id: int, org_id: int, count: int) -> None:
 def test_approvals_list_is_capped_and_pageable(client, admin_headers):
     agent_id = _agent_id(admin_headers, client)
     with SessionLocal() as db:
-        org_id = db.query(User).filter(User.email == "admin@agentops.local").one().org_id
+        org_id = db.query(User).filter(User.email == "admin@agentguard.local").one().org_id
     _seed_approvals(agent_id, org_id, 150)
 
     default_page = client.get("/api/approvals", headers=admin_headers).json()

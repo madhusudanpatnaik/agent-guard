@@ -2,8 +2,8 @@
 
 import pytest
 
-from agentops.brokers import publish_message
-from agentops.brokers import _Producer
+from agentguard.brokers import publish_message
+from agentguard.brokers import _Producer
 
 
 class FakeProducer(_Producer):
@@ -34,7 +34,7 @@ def _broker_agent(client, admin_headers, *, actions, dsn="localhost:9092"):
 
 def _agent_orm(db, api_key_prefix):
     from sqlalchemy import select
-    from agentops.models import Agent
+    from agentguard.models import Agent
     return db.scalar(select(Agent).where(Agent.api_key_prefix == api_key_prefix))
 
 
@@ -85,7 +85,7 @@ def test_publish_non_broker_connector_rejected(client, admin_headers, db):
 
 def test_publish_endpoint_end_to_end(client, admin_headers, monkeypatch, db):
     # Route through the HTTP endpoint with an injected producer via monkeypatch.
-    from agentops import brokers
+    from agentguard import brokers
     fake = FakeProducer()
     monkeypatch.setattr(brokers, "_build_producer", lambda connector: fake)
     agent = _broker_agent(client, admin_headers, actions=["broker.publish"])

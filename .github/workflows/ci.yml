@@ -32,14 +32,14 @@ jobs:
           pip install -r requirements.txt -e ".[dev]"
 
       - name: Lint (ruff)
-        run: ruff check agentops sdk examples tests scripts
+        run: ruff check agentguard sdk examples tests scripts
 
       - name: Type-check (mypy)
-        run: mypy agentops --ignore-missing-imports
+        run: mypy agentguard --ignore-missing-imports
 
       - name: Test (pytest)
         env:
-          AGENTOPS_SECRET_KEY: ci-secret-key-not-used-in-prod-000000000000
+          AGENTGUARD_SECRET_KEY: ci-secret-key-not-used-in-prod-000000000000
         run: pytest -q
 
   # A product whose entire pitch is governance rigor should scan its own supply
@@ -70,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t agentops:ci .
+        run: docker build -t agentguard:ci .
 
       # Report-only for now, deliberately: unlike pip-audit above, this was NOT
       # verified against a real scan before being wired in (no local Docker
@@ -88,7 +88,7 @@ jobs:
         # caught only by actually watching the workflow run, not by guessing.
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
-          image-ref: agentops:ci
+          image-ref: agentguard:ci
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH

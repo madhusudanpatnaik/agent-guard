@@ -1,6 +1,6 @@
 """Initial schema — captures all tables as of v0.1.0.
 
-Matches ``agentops/models.py`` exactly: multi-tenant ``org_id`` columns on every
+Matches ``agentguard/models.py`` exactly: multi-tenant ``org_id`` columns on every
 tenant-scoped table, per-org unique constraints, the alerts table, and the
 connector write-governance columns. Boolean defaults use ``sa.true()`` /
 ``sa.false()`` so the DDL is portable across SQLite and PostgreSQL, and columns

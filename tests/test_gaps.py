@@ -2,13 +2,13 @@
 
 from datetime import datetime, timedelta, timezone
 
-from agentops.approvals_service import expire_if_stale, sweep_expired
-from agentops.audit.ledger import AuditLedger, verify_chain
-from agentops.config import get_settings
-from agentops.gateway_service import _recent_action_count, _scan_request_payload, authorize_action
-from agentops.models import Agent, Approval, ApprovalStatus, AuditRecord, Decision, Effect, Policy, Role
-from agentops.policy.engine import ActionRequest
-from agentops.vault import _fernet_for, reencrypt_secret
+from agentguard.approvals_service import expire_if_stale, sweep_expired
+from agentguard.audit.ledger import AuditLedger, verify_chain
+from agentguard.config import get_settings
+from agentguard.gateway_service import _recent_action_count, _scan_request_payload, authorize_action
+from agentguard.models import Agent, Approval, ApprovalStatus, AuditRecord, Decision, Effect, Policy, Role
+from agentguard.policy.engine import ActionRequest
+from agentguard.vault import _fernet_for, reencrypt_secret
 
 
 # --- vault key rotation -----------------------------------------------------
