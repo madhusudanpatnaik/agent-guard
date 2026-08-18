@@ -42,6 +42,15 @@ have a chain worth retaining.
 
 ### Fixed
 
+- **Negative amounts bypassed spending ceilings and approval thresholds**
+  (high) — every amount bound was `amount > limit`, so against a policy with
+  `max_amount: 5000` and `require_approval_over: 500`, an `amount` of `-9500`
+  was ALLOWED outright while `+9500` was correctly denied: no ceiling, no
+  human, and no risk score (which separately gated on `amount > 0`). Payment
+  APIs that read a negative refund as a charge turn this into a transfer the
+  ceiling exists to prevent. Negative amounts now take the same route the
+  engine already prescribed for a malformed amount — human review — and the
+  risk score measures exposure by magnitude.
 - **Cross-tenant IDOR in SCIM provisioning** (critical) — every SCIM endpoint
   operated on the user table by raw primary key with no `org_id` scoping, behind
   a single deployment-wide bearer token. One tenant's IdP token could list,
