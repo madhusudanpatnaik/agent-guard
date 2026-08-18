@@ -495,6 +495,14 @@ and a hardened non-root container with a health-check.
 
 ---
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). **Upgrading from `agentops`?** The project was
+renamed in 0.3.0 and every `AGENTOPS_*` variable is now `AGENTGUARD_*` — the
+changelog has the full mapping and upgrade steps.
+
+---
+
 ## License
 
 Apache-2.0.

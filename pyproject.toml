@@ -1,6 +1,6 @@
 [project]
 name = "agentguard"
-version = "0.1.0"
+version = "0.3.0"
 description = "AgentGuard — an orchestration & governance control plane for autonomous AI agents (the firewall + Active Directory for the agentic era)."
 readme = "README.md"
 requires-python = ">=3.11"

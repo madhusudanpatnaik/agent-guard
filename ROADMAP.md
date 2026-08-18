@@ -1,6 +1,6 @@
 # AgentGuard Roadmap
 
-## v0.1.0 — MVP (Current)
+## v0.1.0 — MVP (shipped)
 - [x] RBAC policy engine with glob matching, deny-overrides, constraints
 - [x] Enforced mode: plane-as-proxy for upstream credentials
 - [x] DLP scanner with 14+ detectors, redaction, severity-based blocking
@@ -20,7 +20,7 @@
 
 ---
 
-## v0.2.0 — Enterprise & Scale (Current)
+## v0.2.0 — Enterprise & Scale (shipped)
 
 Delivered as **pluggable adapters**: each has a dependency-free default and
 activates only when its optional extra is installed (`pip install
@@ -69,7 +69,7 @@ agentguard[enterprise]`), so the air-gap-friendly single-binary story is intact.
 
 ---
 
-## v0.3.0 — Adaptive & Intelligent Governance (Current)
+## v0.3.0 — Adaptive & Intelligent Governance (current)
 
 ### Risk & anomaly
 - [x] **Adaptive risk scoring** — transparent 0–100 score per decision from DLP
@@ -129,9 +129,14 @@ agentguard[enterprise]`), so the air-gap-friendly single-binary story is intact.
 - [ ] Agent versioning / deployment tracking; A/B (canary) policy testing
 
 ### Compliance
-- [ ] SOC 2 evidence collection automation
-- [ ] GDPR data subject access request (DSAR) support
-- [ ] PCI DSS audit trail compliance reporting
+- [x] **SOC 2 evidence collection automation** — `compliance.py` maps control
+      families to concrete ledger evidence and reports coverage honestly,
+      flagging controls with no evidence as gaps rather than passing them
+- [x] **PCI DSS audit trail compliance reporting** — same engine; `soc2`,
+      `gdpr`, `hipaa` and `pci_dss` frameworks, exposed at
+      `/api/compliance/{frameworks,report,report.md,summary}`
+- [ ] GDPR data subject access request (DSAR) support — the GDPR *control
+      mapping* exists; per-subject access/erasure requests do not
 
 ---
 
