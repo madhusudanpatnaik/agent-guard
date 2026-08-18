@@ -87,8 +87,14 @@ def assess(db: Session, agent: Agent, req: ActionRequest, decision: PolicyDecisi
         factors.append("egress")
 
     amount = _coerce_amount((req.metadata or {}).get("amount"))
-    if amount is not None and amount > 0:
-        bump = min(int(amount / 1000 * 5), 20)
+    # Magnitude, not signed value: `amount > 0` meant a -9500 refund scored the
+    # same zero risk as no amount at all, even though its exposure is identical
+    # to +9500 (and some payment APIs read a negative refund as a charge). The
+    # policy engine routes negative amounts to human review; the risk score
+    # should agree with that rather than call them harmless.
+    if amount is not None and amount != 0:
+        exposure = abs(amount)
+        bump = min(int(exposure / 1000 * 5), 20)
         if bump:
             score += bump
             factors.append(f"amount:{amount:g}")

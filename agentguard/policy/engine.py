@@ -321,6 +321,24 @@ class PolicyEngine:
                 "amount — routed to human review.",
             )
 
+        # A NEGATIVE amount is malformed for this purpose too, and used to sail
+        # straight through: both bounds below are `amount > limit`, so -9500
+        # cleared a max_amount of 5000 AND a require_approval_over of 500 with
+        # no ceiling and no human, while +9500 was correctly denied. Some
+        # payment APIs also treat a negative refund as a charge, which turns
+        # the bypass into a transfer in the opposite direction. There is no
+        # legitimate negative value for a spend ceiling to bound, so this takes
+        # the same route the comment above already prescribes for a malformed
+        # amount rather than inventing sign semantics (e.g. silently comparing
+        # abs(), which would reinterpret the caller's intent).
+        if amount_constrained and amount is not None and amount < 0:
+            return (
+                Decision.REQUIRE_APPROVAL,
+                f"Amount-constrained action submitted with a negative amount "
+                f"({amount:g}) — cannot be bounded by a spending limit, routed "
+                "to human review.",
+            )
+
         # All operator-supplied numeric conditions are parsed with the fail-safe
         # coercer and fail CLOSED on a malformed value — a bad condition must
         # never raise on the authorize hot path (that would 500 the decision and
