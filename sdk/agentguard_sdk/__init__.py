@@ -23,4 +23,4 @@ __all__ = [
     "govern_langchain_tool",
     "govern_tool_fn",
 ]
-__version__ = "0.1.0"
+__version__ = "0.3.0"
