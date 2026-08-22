@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -36,6 +37,8 @@ from .routers import (
 )
 from .security import hash_password
 
+_startup_log = logging.getLogger("agentguard.startup")
+
 STATIC_DIR = Path(__file__).parent / "static"
 
 
@@ -62,10 +65,62 @@ def bootstrap_admin() -> None:
         db.commit()
 
 
+def check_vault_key() -> str | None:
+    """Warn at startup if stored connector secrets can't be decrypted.
+
+    The vault key is derived from VAULT_KEY (falling back to SECRET_KEY), so
+    changing either one orphans every credential encrypted under the old value.
+    Without this check that failure is invisible until the first governed
+    execute/query, which then returns a request-time 400 saying
+    "could not be decrypted (key rotated?)" — confusing for the very common case
+    where the operator never rotated anything: they ran `agentguard seed` before
+    setting AGENTGUARD_SECRET_KEY (the README tells them to set it), and the demo
+    data was encrypted under the dev default.
+
+    Deliberately a warning, not a refusal: a partially-completed
+    `rotate-vault-key` run is a legitimate state an operator must be able to boot
+    into and finish. Returns the message so tests can assert on it.
+    """
+    from .models import Connector
+    from .vault import decrypt_secret
+
+    try:
+        with SessionLocal() as db:
+            rows = db.scalars(
+                select(Connector).where(Connector.auth_secret_encrypted != "").limit(25)
+            ).all()
+            if not rows:
+                return None
+            broken = []
+            for c in rows:
+                try:
+                    decrypt_secret(c.auth_secret_encrypted)
+                except ValueError:
+                    broken.append(c.name)
+    except Exception:  # noqa: BLE001 - never let a diagnostic stop startup
+        return None
+
+    if not broken:
+        return None
+    msg = (
+        f"{len(broken)} connector credential(s) cannot be decrypted with the current "
+        f"vault key ({', '.join(sorted(broken)[:5])}"
+        f"{', …' if len(broken) > 5 else ''}). Governed execute/query against them "
+        "will fail at request time. Most likely AGENTGUARD_SECRET_KEY (or "
+        "AGENTGUARD_VAULT_KEY) changed after these were stored — e.g. seeded before "
+        "setting a key. Fix: re-run `agentguard rotate-vault-key --new-key <current>` "
+        "with the OLD key still in the environment, re-enter the credentials, or "
+        "re-seed a dev database."
+    )
+    _startup_log.warning(msg)
+    return msg
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
     bootstrap_admin()
+    check_vault_key()
     start_background_tasks()
     yield
     stop_background_tasks()
