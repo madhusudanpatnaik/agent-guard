@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # --- Auth -------------------------------------------------------------------
@@ -67,6 +67,36 @@ class OrgUserIn(BaseModel):
 
 # --- Roles & policies -------------------------------------------------------
 
+# Every key the policy engine actually reads out of `conditions`. A key outside
+# this set is silently ignored at evaluation time, which for a security control
+# means it FAILS OPEN: `{"max_ammount": 5000}` (one typo) reads as "no ceiling",
+# and a $999,999 action sails through a policy the operator believes caps it at
+# $5,000. The console authors this field as a raw JSON textarea, so a typo is a
+# keystroke away and nothing downstream would ever surface it.
+#
+# Note the inconsistency this removes: a malformed VALUE (`{"max_amount":
+# "abc"}`) already fails closed to human review in engine._check_constraints,
+# while an unknown KEY failed open. Both are operator error; both should now be
+# caught, and catching this one at write time is strictly better than at
+# evaluation time because the operator is still looking at the policy.
+_VALID_POLICY_CONDITIONS = frozenset({
+    "max_amount",           # hard spending ceiling -> deny above
+    "require_approval_over",  # spending threshold -> human review above
+    "rate_limit",           # {"count": N, "per_seconds": S}
+    "time_window",          # {"start": "09:00", "end": "17:00"} UTC
+    "attributes",           # ABAC predicates on subject.* / resource.* / env.*
+    "risk_step_up",         # per-policy override of the global step-up threshold
+})
+
+
+def _suggest_condition_key(unknown: str) -> str | None:
+    """Best-effort 'did you mean' for a mistyped condition key."""
+    import difflib
+
+    matches = difflib.get_close_matches(unknown, _VALID_POLICY_CONDITIONS, n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
+
 class PolicyIn(BaseModel):
     name: str = ""
     effect: str = Field(default="allow", pattern="^(allow|deny)$")
@@ -76,6 +106,23 @@ class PolicyIn(BaseModel):
     require_approval: bool = False
     priority: int = 0
     enabled: bool = True
+
+    @field_validator("conditions")
+    @classmethod
+    def _reject_unknown_conditions(cls, v: dict[str, Any]) -> dict[str, Any]:
+        unknown = sorted(set(v) - _VALID_POLICY_CONDITIONS)
+        if not unknown:
+            return v
+        details = []
+        for key in unknown:
+            suggestion = _suggest_condition_key(key)
+            details.append(f"{key!r}" + (f" (did you mean {suggestion!r}?)" if suggestion else ""))
+        raise ValueError(
+            "unknown policy condition key(s): " + ", ".join(details)
+            + ". An unrecognised key is ignored when the policy is evaluated, so the "
+            "constraint you intended would not be enforced. Valid keys: "
+            + ", ".join(sorted(_VALID_POLICY_CONDITIONS))
+        )
 
 
 class PolicyOut(PolicyIn):

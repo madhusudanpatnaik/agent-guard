@@ -42,6 +42,20 @@ have a chain worth retaining.
 
 ### Fixed
 
+- **A typo in a policy condition key silently disabled that control** (high) —
+  keys the engine doesn't recognise are never read, so for a security control
+  they fail *open*: a policy written `{"max_ammount": 5000}` (one transposed
+  letter, authored in the console's raw-JSON textarea) saved successfully,
+  showed as active, and allowed a $999,999 action through what the operator
+  believed was a $5,000 ceiling. Unknown condition keys are now rejected at
+  write time with a "did you mean" suggestion and the list of valid keys. This
+  also removes an inconsistency — a malformed *value* already failed closed
+  while an unknown *key* failed open.
+- **An unusable vault key surfaced only on the first governed call** — seeding
+  before setting `AGENTGUARD_SECRET_KEY` (the order the README implies) left
+  connector credentials encrypted under the dev default; the server booted
+  clean and failed later with "key rotated?" despite no rotation. Now checked
+  at startup with an actionable message.
 - **Negative amounts bypassed spending ceilings and approval thresholds**
   (high) — every amount bound was `amount > limit`, so against a policy with
   `max_amount: 5000` and `require_approval_over: 500`, an `amount` of `-9500`
