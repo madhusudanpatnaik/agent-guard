@@ -39,13 +39,15 @@ class FakeRedis:
 # --- DB backend (default) ---------------------------------------------------
 
 def test_db_backend_counts_billable_only(db):
+    from tests.conftest import make_agent
+    aid = make_agent(db, name="counter-a")
     ledger = AuditLedger(db)
-    ledger.append(agent_id=7, agent_name="a", role_name="r", action_type="act",
+    ledger.append(agent_id=aid, agent_name="a", role_name="r", action_type="act",
                   resource="x", decision=Decision.ALLOW, reason="", billable=True)
-    ledger.append(agent_id=7, agent_name="a", role_name="r", action_type="act.result",
+    ledger.append(agent_id=aid, agent_name="a", role_name="r", action_type="act.result",
                   resource="x", decision=Decision.ALLOW, reason="", billable=False)
     backend = DBRateBackend()
-    assert backend.count(db, 7, 3600) == 1  # the .result row is excluded
+    assert backend.count(db, aid, 3600) == 1  # the .result row is excluded
 
 
 def test_get_rate_backend_defaults_to_db(monkeypatch):
@@ -85,14 +87,16 @@ def test_redis_isolates_agents(db):
 
 
 def test_redis_failure_falls_back_to_db(db):
-    # DB has one billable action for agent 9.
-    AuditLedger(db).append(agent_id=9, agent_name="a", role_name="r", action_type="act",
+    from tests.conftest import make_agent
+    aid = make_agent(db, name="counter-fallback")
+    # DB has one billable action for this agent.
+    AuditLedger(db).append(agent_id=aid, agent_name="a", role_name="r", action_type="act",
                            resource="x", decision=Decision.ALLOW, reason="", billable=True)
     fake = FakeRedis()
     fake.fail = True  # every Redis op raises
     backend = RedisRateBackend(fake, fallback=DBRateBackend())
     # count must transparently use the DB fallback rather than raise.
-    assert backend.count(db, 9, 3600) == 1
+    assert backend.count(db, aid, 3600) == 1
     # observe must swallow the error (never break governance).
     backend.observe(db, 9)
 

@@ -37,6 +37,17 @@ class _QueryCounter:
         event.remove(engine, "before_cursor_execute", self._on)
 
     def _on(self, conn, cursor, statement, params, context, executemany):
+        # The advisory lock is the ledger's append-serialization primitive on
+        # PostgreSQL (pg_advisory_xact_lock); on SQLite the same guard is an
+        # in-process threading.Lock with no SQL. It is a deliberate, necessary
+        # concurrency round-trip, not a data fetch, so it is excluded from the
+        # budget — which exists to catch re-introduced *data* N+1s. Measured:
+        # data-query count is identical on both backends (SQLite and Postgres);
+        # only this lock statement differs. Counting it would make the budget
+        # backend-dependent and would flag correct concurrency-safety code as a
+        # regression.
+        if "advisory_xact_lock" in statement:
+            return
         self.n += 1
 
 

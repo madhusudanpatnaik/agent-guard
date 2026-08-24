@@ -23,9 +23,20 @@ def test_reencrypt_vault_secret_roundtrip():
 
 # --- approval expiry --------------------------------------------------------
 
+def _pending_agent_id(db) -> int:
+    """One real agent shared by the approval tests (approvals.agent_id is a
+    non-nullable FK; SQLite now enforces it, matching production Postgres)."""
+    from agentguard.models import Agent
+    existing = db.query(Agent).filter(Agent.name == "gaps-approval-agent").first()
+    if existing:
+        return existing.id
+    from tests.conftest import make_agent
+    return make_agent(db, name="gaps-approval-agent")
+
+
 def _make_pending(db, *, expires_in: int) -> Approval:
     appr = Approval(
-        agent_id=1, agent_name="a", action_type="payment.refund",
+        agent_id=_pending_agent_id(db), agent_name="a", action_type="payment.refund",
         resource="payment:stripe:refund", status=ApprovalStatus.PENDING,
         expires_at=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
     )
@@ -76,7 +87,7 @@ def test_head_anchor_detects_truncation(db, tmp_path, monkeypatch):
 
     ledger = AuditLedger(db)
     for i in range(4):
-        ledger.append(agent_id=1, agent_name="a", role_name="r",
+        ledger.append(agent_id=None, agent_name="a", role_name="r",
                       action_type="db.read", resource=f"db:x:{i}",
                       decision=Decision.ALLOW, reason="ok")
 
@@ -128,7 +139,7 @@ def test_derivative_rows_do_not_consume_rate_limit(db):
 def test_audit_head_endpoint(db, client, admin_headers):
     ledger = AuditLedger(db)
     for i in range(3):
-        ledger.append(agent_id=1, agent_name="a", role_name="r",
+        ledger.append(agent_id=None, agent_name="a", role_name="r",
                       action_type="db.read", resource=f"db:x:{i}",
                       decision=Decision.ALLOW, reason="ok")
     head = client.get("/api/audit/head", headers=admin_headers).json()

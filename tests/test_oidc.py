@@ -155,7 +155,14 @@ def test_auto_provision_refuses_when_default_org_is_missing(client, oidc_setup, 
     """
     from agentguard.models import Organization
 
-    db.query(Organization).filter(Organization.slug == "default").delete()
+    # Delete users in the default org first: users.org_id is a FK, and Postgres
+    # (the production backend) refuses to delete a referenced org — SQLite used
+    # to allow it only because it did not enforce FKs. Removing the dependents
+    # models the real "no default org exists" state this test asserts against.
+    from agentguard.models import User as _User
+    default = db.query(Organization).filter(Organization.slug == "default").one()
+    db.query(_User).filter(_User.org_id == default.id).delete()
+    db.delete(default)
     db.commit()
 
     r = _callback_with(client, oidc_setup, _claims(email="new-user@corp.example"))

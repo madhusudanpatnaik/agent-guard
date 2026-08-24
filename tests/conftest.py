@@ -71,3 +71,25 @@ def admin_headers(client):
     )
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+def make_agent(session, *, name: str = "test-agent", org_id: int | None = None) -> int:
+    """Insert a minimal Role + Agent directly and return the agent id.
+
+    For low-level tests (ledger, counters, reputation, approvals) that need a
+    real agent row to satisfy the foreign key on audit_records.agent_id /
+    approvals.agent_id. SQLite now enforces FKs (matching production Postgres),
+    so fabricating a synthetic agent_id no longer works on either backend — and
+    shouldn't, since it never reflected a real state.
+    """
+    from agentguard.models import Agent, AgentStatus, Role
+
+    role = Role(name=f"role-for-{name}", description="", org_id=org_id)
+    session.add(role)
+    session.flush()
+    agent = Agent(name=name, role_id=role.id, org_id=org_id,
+                  api_key_hash=f"hash-{name}", api_key_prefix=name[:12],
+                  status=AgentStatus.ACTIVE)
+    session.add(agent)
+    session.commit()
+    return agent.id

@@ -37,9 +37,9 @@ def test_risk_persisted_but_not_in_hash(client, admin_headers):
 
 def test_risk_columns_do_not_break_chain_integrity(db):
     led = AuditLedger(db)
-    led.append(agent_id=1, agent_name="a", role_name="r", action_type="x", resource="y",
+    led.append(agent_id=None, agent_name="a", role_name="r", action_type="x", resource="y",
                decision=Decision.ALLOW, reason="", risk_score=88, risk_factors=["egress"])
-    led.append(agent_id=1, agent_name="a", role_name="r", action_type="x", resource="z",
+    led.append(agent_id=None, agent_name="a", role_name="r", action_type="x", resource="z",
                decision=Decision.ALLOW, reason="", risk_score=10, risk_factors=[])
     status = verify_chain(db)
     assert status.valid is True   # risk is excluded from the hash pre-image
@@ -50,7 +50,7 @@ def test_tampering_risk_score_does_not_break_chain(db):
     # treated as ledger tampering (it isn't part of the hash commitment).
     from agentguard.models import AuditRecord
     led = AuditLedger(db)
-    led.append(agent_id=1, agent_name="a", role_name="r", action_type="x", resource="y",
+    led.append(agent_id=None, agent_name="a", role_name="r", action_type="x", resource="y",
                decision=Decision.ALLOW, reason="", risk_score=10)
     rec = db.query(AuditRecord).filter(AuditRecord.seq == 0).one()
     rec.risk_score = 999

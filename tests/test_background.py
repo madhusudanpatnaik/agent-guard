@@ -7,19 +7,21 @@ from agentguard.models import Approval, ApprovalStatus
 
 
 def test_sweep_expired_transitions_stale(db):
+    from tests.conftest import make_agent
+    aid = make_agent(db, name="bg-approval-agent")
     """Proactive sweeper transitions stale pending approvals."""
     stale = Approval(
-        agent_id=1, agent_name="a", action_type="act", resource="r",
+        agent_id=aid, agent_name="a", action_type="act", resource="r",
         status=ApprovalStatus.PENDING,
         expires_at=datetime.now(timezone.utc) - timedelta(seconds=60),
     )
     fresh = Approval(
-        agent_id=1, agent_name="b", action_type="act", resource="r",
+        agent_id=aid, agent_name="b", action_type="act", resource="r",
         status=ApprovalStatus.PENDING,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
     already = Approval(
-        agent_id=1, agent_name="c", action_type="act", resource="r",
+        agent_id=aid, agent_name="c", action_type="act", resource="r",
         status=ApprovalStatus.APPROVED,
     )
     db.add_all([stale, fresh, already])

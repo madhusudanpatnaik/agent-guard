@@ -4,10 +4,35 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import get_settings
+
+
+@event.listens_for(Engine, "connect")
+def _enforce_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
+    """Turn on foreign-key enforcement for every SQLite connection.
+
+    SQLite ships with FK enforcement OFF by default, so a plain
+    ``db.delete(agent)`` silently orphaned the agent's audit rows on the
+    "runs on SQLite out of the box" path — while the same call on the
+    documented PostgreSQL backend raised a ForeignKeyViolation (500). That
+    split is exactly how the delete-an-audited-agent bug reached production:
+    dev and CI ran on the laxer database. Enforcing FKs here makes SQLite
+    behave like Postgres, so referential bugs surface in the default path
+    instead of only against prod. No-op for non-SQLite backends (the event
+    still fires, but the PRAGMA is skipped).
+    """
+    # `Engine.connect` fires for every backend; only issue the PRAGMA on SQLite.
+    if type(dbapi_connection).__module__.startswith("sqlite3") or \
+            "sqlite" in type(dbapi_connection).__module__:
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
 
 
 class Base(DeclarativeBase):

@@ -63,6 +63,40 @@ def test_agent_delete(client, admin_headers):
     assert resp.status_code == 404
 
 
+def test_agent_delete_refused_once_it_has_audit_history(client, admin_headers):
+    """An agent that has acted cannot be deleted — the audit trail is append-only.
+
+    Regression for a backend-dependent production bug: audit_records.agent_id is
+    a plain FK with no ondelete, and agent_id + seq are both inside the ledger's
+    hash pre-image. On PostgreSQL (the documented production backend) the raw
+    delete raised an unhandled ForeignKeyViolation -> HTTP 500; on SQLite, which
+    does not enforce FKs by default, it silently orphaned the audit rows. Neither
+    cascade nor null-out is available (both destroy or invalidate the tamper-
+    evident chain), so the delete must be refused with a clear remedy.
+    """
+    role = _create_role(client, admin_headers, name="acted-role")
+    # Give the role a policy so the action is actually authorized and recorded.
+    client.post(f"/api/roles/{role['id']}/policies", headers=admin_headers,
+                json={"effect": "allow", "resource": "**", "actions": ["**"]})
+    agent = _create_agent(client, admin_headers, name="acted-agent", role_id=role["id"])
+
+    # One governed action writes an audit record referencing this agent.
+    r = client.post("/api/v1/gateway/authorize", headers={"X-API-Key": agent["api_key"]},
+                    json={"action_type": "tool.call", "resource": "x"})
+    assert r.status_code == 200, r.text
+
+    resp = client.delete(f"/api/agents/{agent['id']}", headers=admin_headers)
+    assert resp.status_code == 409, resp.text
+    assert "audit" in resp.text.lower()
+    assert "suspend" in resp.text.lower(), "the 409 must point the operator at the real remedy"
+
+    # The agent (and its trail) must still be there, and suspension must work.
+    assert client.get(f"/api/agents/{agent['id']}", headers=admin_headers).status_code == 200
+    susp = client.post(f"/api/agents/{agent['id']}/status",
+                       json={"status": "suspended"}, headers=admin_headers)
+    assert susp.status_code == 200, susp.text
+
+
 # --- Role CRUD ---
 
 def test_role_update(client, admin_headers):

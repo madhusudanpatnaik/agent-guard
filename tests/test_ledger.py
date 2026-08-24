@@ -12,8 +12,11 @@ from agentguard.models import Decision
 
 
 def _append(ledger, i, decision=Decision.ALLOW):
+    # agent_id=None: these tests exercise the hash-chain, where agent_id is
+    # incidental. The ledger genuinely supports None (org-level events use it),
+    # and it avoids fabricating an FK to an agent that was never created.
     return ledger.append(
-        agent_id=1,
+        agent_id=None,
         agent_name=f"agent-{i}",
         role_name="role",
         action_type="db.read",

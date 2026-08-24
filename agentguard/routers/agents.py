@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..database import get_db
-from ..models import Agent, AgentStatus, Role, User
+from ..models import Agent, AgentStatus, Approval, AuditRecord, Role, User
 from ..reputation import compute as compute_reputation
 from ..schemas import (
     AgentCreated,
@@ -143,6 +143,49 @@ def rotate_key(
 def delete_agent(
     agent_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)
 ) -> None:
+    """Delete an agent that has no governed history.
+
+    Refuses once the agent appears in the audit ledger, and says so explicitly
+    rather than letting the database decide. On PostgreSQL (the documented
+    production backend) the raw delete raised an unhandled ForeignKeyViolation
+    and returned 500; on SQLite, which does not enforce foreign keys by default,
+    the same call silently orphaned the agent's audit rows. Same request, two
+    different wrong answers depending on the backend.
+
+    Neither cascade nor null-out is available here, because agent_id and seq are
+    both inside the ledger's hash pre-image (see audit.ledger._hashable_view):
+    deleting the rows opens a sequence gap and destroys the trail, while nulling
+    the column rewrites a hashed field, so verify_chain would then correctly
+    report the ledger as tampered with. An append-only audit trail outliving the
+    principal it describes is the intended behaviour, not an obstacle — so the
+    delete is refused and the operator is pointed at suspension, which is what
+    "stop this agent" actually means here.
+    """
     agent = _agent_in_org(db, agent_id, user)
+
+    audited = db.scalar(
+        select(func.count(AuditRecord.id)).where(AuditRecord.agent_id == agent.id)
+    ) or 0
+    if audited:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Agent '{agent.name}' has {audited} audit record(s) and cannot be deleted — "
+            "the audit trail is append-only and must outlive the agent it describes. "
+            f"Suspend it instead (PATCH /api/agents/{agent.id} with "
+            '{"status": "suspended"}), which revokes access immediately and keeps '
+            "the evidence intact.",
+        )
+
+    pending = db.scalar(
+        select(func.count(Approval.id)).where(Approval.agent_id == agent.id)
+    ) or 0
+    if pending:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Agent '{agent.name}' has {pending} approval record(s) and cannot be "
+            "deleted — approvals are part of the dual-control record. Suspend the "
+            "agent instead.",
+        )
+
     db.delete(agent)
     db.commit()

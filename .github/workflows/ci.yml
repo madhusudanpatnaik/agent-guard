@@ -42,6 +42,43 @@ jobs:
           AGENTGUARD_SECRET_KEY: ci-secret-key-not-used-in-prod-000000000000
         run: pytest -q
 
+  # The suite above runs on SQLite (the zero-config dev backend). This job runs
+  # the SAME suite against PostgreSQL — the backend docker-compose.yml and the
+  # README document for production. It exists because that gap was real and
+  # expensive: PostgreSQL enforces foreign keys and uses a real advisory lock
+  # for ledger appends, and running only on SQLite hid a production 500
+  # (deleting an agent that had audit history) plus ~20 tests that fabricated
+  # foreign keys SQLite silently accepted. "Runs on my laptop against SQLite"
+  # is not "works on the database we tell people to deploy."
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentguard
+          POSTGRES_PASSWORD: agentguard
+          POSTGRES_DB: agentguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentguard"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt -e ".[dev]"
+      - name: Test (pytest) against PostgreSQL
+        env:
+          AGENTGUARD_SECRET_KEY: ci-secret-key-not-used-in-prod-000000000000
+          AGENTGUARD_DATABASE_URL: postgresql+psycopg://agentguard:agentguard@localhost:5432/agentguard_test
+        run: pytest -q
+
   # A product whose entire pitch is governance rigor should scan its own supply
   # chain. Hard-fails the build; verified locally before wiring in.
   #
